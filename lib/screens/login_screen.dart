@@ -2,6 +2,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_auth_ui/supabase_auth_ui.dart';
 import '../styles/styles.dart';
 import '../core/widgets/header.dart';
@@ -69,7 +70,7 @@ class LoginScreen extends StatelessWidget {
                   SupaEmailAuth(
                     redirectTo: kIsWeb ? null : 'io.supabase.hkmumodelhub://login-callback/',
                     onSignInComplete: (response) {
-                      Navigator.of(context).pop();
+                      context.go('/'); // ← Redirect to home, no pop/back history
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: const Text('Logged in successfully!'),
@@ -78,7 +79,7 @@ class LoginScreen extends StatelessWidget {
                       );
                     },
                     onSignUpComplete: (response) {
-                      Navigator.of(context).pop();
+                      context.go('/'); // ← Same for signup
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: const Text('Account created! Please check your email to confirm.'),
