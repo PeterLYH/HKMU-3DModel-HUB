@@ -1,5 +1,5 @@
 name: hkmu_3dmodel_hub
-description: "A new Flutter project."
+description: "Welcome to HKMU 3D Model Hub  HKMU 3D Model Hub"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -45,6 +45,10 @@ dependencies:
   intl: ^0.20.2
   file_picker: ^9.2.3
   model_viewer_plus: ^1.10.0
+  http: ^1.6.0
+  provider: ^6.1.5+1
+  flutter_svg: ^2.2.3
+  shared_preferences: ^2.5.4
 
 dev_dependencies:
   flutter_test:
@@ -70,6 +74,7 @@ flutter:
 
   assets:
     - assets/fonts/
+    - assets/icons/
 
   # Custom fonts
   fonts:

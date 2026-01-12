@@ -3,14 +3,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'styles/styles.dart';
+import 'providers/cart_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/admin_panel_screen.dart';
 import 'screens/upload_screen.dart';
 import 'screens/model_detail_screen.dart';
+import 'screens/cart_screen.dart';
+import 'screens/request_success_screen.dart';
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -40,6 +44,10 @@ class _MyAppState extends State<MyApp> {
         builder: (context, state) => const HomeScreen(),
       ),
       GoRoute(
+        path: '/request-success',
+        builder: (context, state) => const RequestSuccessScreen(),
+      ),
+      GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
       ),
@@ -48,7 +56,6 @@ class _MyAppState extends State<MyApp> {
         builder: (context, state) => const AdminPanelScreen(),
         redirect: (context, state) async {
           final user = Supabase.instance.client.auth.currentUser;
-
           if (user == null) return '/';
 
           try {
@@ -59,7 +66,6 @@ class _MyAppState extends State<MyApp> {
                 .single();
 
             final role = response['role'] as String?;
-
             return role == 'admin' ? null : '/';
           } catch (e) {
             return '/';
@@ -93,20 +99,34 @@ class _MyAppState extends State<MyApp> {
           modelId: state.pathParameters['id']!,
         ),
       ),
+      GoRoute(
+        path: '/cart',
+        builder: (context, state) => const CartScreen(),
+        redirect: (context, state) async {
+          final user = Supabase.instance.client.auth.currentUser;
+          if (user == null) {
+            return '/login';
+          }
+          return null;
+        },
+      ),
     ],
   );
 
   @override
   Widget build(BuildContext context) {
-    usePathUrlStrategy(); // Clean URLs: no #
+    usePathUrlStrategy();
 
-    return MaterialApp.router(
-      title: 'HKMU 3D Model Hub',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: _themeMode,
-      routerConfig: _router,
+    return ChangeNotifierProvider(
+      create: (_) => CartProvider(),
+      child: MaterialApp.router(
+        title: 'HKMU 3D Model Hub',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: _themeMode,
+        routerConfig: _router,
+      ),
     );
   }
 }
