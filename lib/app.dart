@@ -12,7 +12,6 @@ import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/admin_panel_screen.dart';
 import 'screens/upload_screen.dart';
-import 'screens/model_detail_screen.dart';
 import 'screens/cart_screen.dart';
 import 'screens/request_success_screen.dart';
 
@@ -51,6 +50,7 @@ class _MyAppState extends State<MyApp> {
         path: '/login',
         builder: (context, state) => const LoginScreen(),
       ),
+      
       GoRoute(
         path: '/admin',
         builder: (context, state) => const AdminPanelScreen(),
@@ -92,12 +92,6 @@ class _MyAppState extends State<MyApp> {
             return '/';
           }
         },
-      ),
-      GoRoute(
-        path: '/model/:id',
-        builder: (context, state) => ModelDetailScreen(
-          modelId: state.pathParameters['id']!,
-        ),
       ),
       GoRoute(
         path: '/cart',

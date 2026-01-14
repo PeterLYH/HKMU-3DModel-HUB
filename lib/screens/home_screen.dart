@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/widgets/header.dart';
 import '../styles/styles.dart';
+import '../widgets/model_detail_content.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -160,6 +161,25 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     _loadPage(1);
   }
+
+  void showModelDetailDialog(BuildContext context, String modelId) {
+  showDialog(
+    context: context,
+    builder: (dialogContext) {
+      return Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: 900,
+            maxHeight: 780, // adjust based on your preference
+          ),
+          child: ModelDetailContent(modelId: modelId),
+        ),
+      );
+    },
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -440,7 +460,8 @@ class _HomeScreenState extends State<HomeScreen> {
         final thumbnailUrl = getThumbnailUrl(model['thumbnail_path']);
 
         return InkWell(
-          onTap: () => context.go('/model/${model['id']}'),
+          onTap: () {
+          showModelDetailDialog(context, model['id'] as String);},
           borderRadius: BorderRadius.circular(16),
           child: Card(
             elevation: 6,

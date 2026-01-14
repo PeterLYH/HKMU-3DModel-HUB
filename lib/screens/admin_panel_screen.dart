@@ -733,12 +733,12 @@ class _UsersManagementTabState extends State<UsersManagementTab> {
                             child: SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
                               child: DataTable(
-                                columnSpacing: 60,
+                                columnSpacing: 40,
                                 headingRowHeight: 80,
                                 // ignore: deprecated_member_use
                                 dataRowHeight: 100,
                                 headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-                                dataTextStyle: const TextStyle(fontSize: 18),
+                                dataTextStyle: const TextStyle(fontSize: 14),
                                 columns: [
                                   DataColumn(
                                     label: Checkbox(
@@ -1448,12 +1448,12 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
                             child: SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
                               child: DataTable(
-                                columnSpacing: 60,
+                                columnSpacing: 40,
                                 headingRowHeight: 80,
                                 // ignore: deprecated_member_use
-                                dataRowHeight: 120,
+                                dataRowHeight: 100,
                                 headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-                                dataTextStyle: const TextStyle(fontSize: 18),
+                                dataTextStyle: const TextStyle(fontSize: 14),
                                 columns: [
                                   DataColumn(
                                     label: Checkbox(
@@ -1462,9 +1462,7 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
                                     ),
                                   ),
                                   const DataColumn(label: Text('Thumbnail')),
-                                  const DataColumn(label: Text('Name')),
-                                  const DataColumn(label: Text('Category')),
-                                  const DataColumn(label: Text('File Type')),
+                                  const DataColumn(label: Text('Model Name')),
                                   const DataColumn(label: Text('Uploader')),
                                   const DataColumn(label: Text('Uploaded')),
                                   const DataColumn(label: Text('Actions')),
@@ -1514,11 +1512,6 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
                                           ),
                                         ),
                                       ),
-                                      DataCell(Text(model['category'] ?? 'Other', style: const TextStyle(fontSize: 18))),
-                                      DataCell(Text(
-                                        model['file_type'] ?? '',
-                                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                                      )),
                                       DataCell(Text(uploaderEmail, style: const TextStyle(fontSize: 17))),
                                       DataCell(Text(DateFormat('dd/MM/yyyy').format(createdAt), style: const TextStyle(fontSize: 18))),
                                       DataCell(
@@ -1958,12 +1951,12 @@ Future<void> _downloadRequestAsZip(String requestId) async {
                             child: SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
                               child: DataTable(
-                                columnSpacing: 60,
+                                columnSpacing: 40,
                                 headingRowHeight: 80,
                                 // ignore: deprecated_member_use
                                 dataRowHeight: 100,
                                 headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-                                dataTextStyle: const TextStyle(fontSize: 18),
+                                dataTextStyle: const TextStyle(fontSize: 14),
                                 columns: [
                                   DataColumn(
                                     label: Checkbox(
@@ -1973,15 +1966,13 @@ Future<void> _downloadRequestAsZip(String requestId) async {
                                   ),
                                   const DataColumn(label: Text('User Email')),
                                   const DataColumn(label: Text('Models')),
-                                  const DataColumn(label: Text('Status')),
+                                  const DataColumn(label: Text('Status')),                                  
                                   const DataColumn(label: Text('Created At')),
-                                  const DataColumn(label: Text('Updated At')),
                                   const DataColumn(label: Text('Actions')),
                                 ],
                                 rows: _filteredRequests.map((req) {
                                   final id = req['id'] as String;
                                   final status = req['status'] as String? ?? 'pending';
-                                  final created = DateTime.tryParse(req['created_at'] ?? '') ?? DateTime.now();
                                   final updated = DateTime.tryParse(req['updated_at'] ?? '') ?? DateTime.now();
                                   final isSelected = _selectedIds.contains(id);
 
@@ -2055,7 +2046,6 @@ Future<void> _downloadRequestAsZip(String requestId) async {
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                         ),
                                       ),
-                                      DataCell(Text(DateFormat('dd/MM/yyyy HH:mm').format(created), style: const TextStyle(fontSize: 18))),
                                       DataCell(Text(DateFormat('dd/MM/yyyy HH:mm').format(updated), style: const TextStyle(fontSize: 18))),
                                       DataCell(
                                         Row(

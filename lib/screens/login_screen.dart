@@ -79,7 +79,7 @@ class LoginScreen extends StatelessWidget {
                       );
                     },
                     onSignUpComplete: (response) {
-                      context.go('/'); // ← Same for signup
+                      context.go('/'); 
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: const Text('Account created! Please check your email to confirm.'),
