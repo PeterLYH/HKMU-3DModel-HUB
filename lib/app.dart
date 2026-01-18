@@ -14,6 +14,7 @@ import 'screens/admin_panel_screen.dart';
 import 'screens/upload_screen.dart';
 import 'screens/cart_screen.dart';
 import 'screens/request_success_screen.dart';
+import 'screens/reset_password_screen.dart';
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -50,7 +51,12 @@ class _MyAppState extends State<MyApp> {
         path: '/login',
         builder: (context, state) => const LoginScreen(),
       ),
-      
+      GoRoute(
+            path: '/reset-password',
+            builder: (context, state) {
+              return const ResetPasswordScreen();
+            },
+          ),
       GoRoute(
         path: '/admin',
         builder: (context, state) => const AdminPanelScreen(),

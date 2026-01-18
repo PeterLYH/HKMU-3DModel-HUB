@@ -7,10 +7,53 @@ import 'package:flutter/scheduler.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:emailjs/emailjs.dart' as emailjs;
 
 import '../providers/cart_provider.dart';
 import '../styles/styles.dart';
 import '../core/widgets/header.dart';
+
+const String confirmationServiceId = 'service_81tie0k';
+const String confirmationTemplateId = 'template_alvxwce';
+const String emailjsPublicKey = 'gYEQnNnjea-qVcEVe';
+const String emailjsPrivateKey = 'ny3v8WRBmB9XW7UWCvXf0';
+
+Future<bool> sendRequestConfirmationEmail({
+  required String toEmail,
+  required String userName,
+  required List<String> modelNames,
+  required String description,
+}) async {
+  try {
+    final templateParams = {
+      'user_name': userName.isNotEmpty ? userName : 'User',
+      'email': toEmail,
+      'model_list': modelNames.isEmpty ? '—' : '• ${modelNames.join('\n• ')}',
+      'model_count': modelNames.length.toString(),
+      'description': description.isNotEmpty ? description : 'No description provided',
+      'request_date': DateTime.now().toString().substring(0, 16),
+    };
+
+    await emailjs.send(
+      confirmationServiceId,
+      confirmationTemplateId,
+      templateParams,
+      emailjs.Options(
+        publicKey: emailjsPublicKey,
+        privateKey: emailjsPrivateKey,
+      ),
+    );
+
+    debugPrint('Confirmation email sent successfully to $toEmail');
+    return true;
+  } catch (error) {
+    debugPrint('Confirmation email send failed: $error');
+    if (error is emailjs.EmailJSResponseStatus) {
+      debugPrint('→ Status: ${error.status}, Text: ${error.text}');
+    }
+    return false;
+  }
+}
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -21,6 +64,9 @@ class CartScreen extends StatefulWidget {
 
 class _CartScreenState extends State<CartScreen> {
   Future<List<Map<String, dynamic>>>? _modelsFuture;
+
+  final _descriptionController = TextEditingController();
+  String? _descriptionError;
 
   @override
   void initState() {
@@ -37,12 +83,16 @@ class _CartScreenState extends State<CartScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadCartModels() async {
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
 
-    if (cartProvider.isLoading) {
-      return;
-    }
+    if (cartProvider.isLoading) return;
 
     if (cartProvider.cartModelIds.isEmpty) {
       setState(() => _modelsFuture = Future.value([]));
@@ -106,11 +156,155 @@ class _CartScreenState extends State<CartScreen> {
                         },
                       ),
                     ),
-                    _buildRequestButton(context, cartProvider, theme),
+                    _buildBottomSection(context, cartProvider, theme, models),
                   ],
                 );
               },
             ),
+    );
+  }
+
+  Widget _buildBottomSection(
+    BuildContext context,
+    CartProvider cartProvider,
+    ThemeData theme,
+    List<Map<String, dynamic>> models, // ← pass models here
+  ) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      decoration: BoxDecoration(
+        color: theme.cardTheme.color,
+        boxShadow: [
+          BoxShadow(
+            color: theme.brightness == Brightness.dark
+                ? Colors.black.withOpacity(0.4)
+                : Colors.black.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Description',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _descriptionController,
+            maxLines: 4,
+            minLines: 3,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(
+              hintText: 'What are you planning to use these models for? ',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              errorText: _descriptionError,
+              filled: true,
+              fillColor: theme.inputDecorationTheme.fillColor ?? theme.colorScheme.surfaceContainer,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 76,
+            child: ElevatedButton.icon(
+              onPressed: cartProvider.itemCount == 0 || cartProvider.isLoading
+                  ? null
+                  : () async {
+                      setState(() => _descriptionError = null);
+                      final desc = _descriptionController.text.trim();
+
+                      if (desc.isEmpty) {
+                        setState(() {
+                          _descriptionError = 'Please add a short description';
+                        });
+                        return;
+                      }
+
+                      final confirmed = await _showConfirmDialog(context, theme);
+                      if (!confirmed || !mounted) return;
+
+                      final router = GoRouter.of(context);
+
+                      final result = await cartProvider.submitDownloadRequest(
+                        description: desc,
+                      );
+
+                      if (!mounted) return;
+
+                      if (result['success'] == true) {
+                        // Send confirmation email using loaded models
+                        final user = Supabase.instance.client.auth.currentUser;
+                        final userEmail = user?.email ?? '';
+                        final userName = userEmail.split('@').first.trim();
+
+                        final modelNames = models
+                            .map((m) => (m['name'] as String?)?.trim() ?? 'Untitled Model')
+                            .toList();
+
+                        final emailSent = await sendRequestConfirmationEmail(
+                          toEmail: userEmail,
+                          userName: userName,
+                          modelNames: modelNames,
+                          description: desc,
+                        );
+
+                        if (!emailSent && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Request submitted, but confirmation email could not be sent',
+                              ),
+                              backgroundColor: Colors.orange,
+                              duration: Duration(seconds: 5),
+                            ),
+                          );
+                        }
+
+                        // Navigate to success screen
+                        SchedulerBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) {
+                            router.go('/request-success');
+                          }
+                        });
+
+                        // Clean up
+                        cartProvider.clearCart();
+                        _descriptionController.clear();
+                      } else if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(result['message'] as String),
+                            backgroundColor: Colors.redAccent,
+                            duration: const Duration(seconds: 4),
+                          ),
+                        );
+                      }
+                    },
+              icon: const Icon(Icons.send),
+              label: const Text(
+                'Submit Download Request',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 6,
+                padding: const EdgeInsets.symmetric(vertical: 0),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -136,7 +330,7 @@ class _CartScreenState extends State<CartScreen> {
             Text(
               'Browse and add 3D models you would like to request',
               style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.textTheme.bodyLarge?.color?.withValues(alpha: 0.7),
+                color: theme.textTheme.bodyLarge?.color?.withOpacity(0.7),
               ),
               textAlign: TextAlign.center,
             ),
@@ -216,7 +410,7 @@ class _CartScreenState extends State<CartScreen> {
                   Text(
                     '${model['category'] ?? '—'} • ${model['file_type'] ?? '—'}',
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
+                      color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
                     ),
                   ),
                 ],
@@ -240,68 +434,6 @@ class _CartScreenState extends State<CartScreen> {
     return Container(
       color: theme.brightness == Brightness.dark ? Colors.grey[800] : Colors.grey[200],
       child: const Icon(Icons.model_training_outlined, size: 40, color: Colors.grey),
-    );
-  }
-
-  Widget _buildRequestButton(
-    BuildContext context,
-    CartProvider cartProvider,
-    ThemeData theme,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.cardTheme.color,
-        boxShadow: [
-          BoxShadow(
-            color: theme.brightness == Brightness.dark
-                ? Colors.black.withValues(alpha: 0.4)
-                : Colors.black.withValues(alpha: 0.08),
-            blurRadius: 10,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: cartProvider.itemCount == 0 || cartProvider.isLoading
-              ? null
-              : () async {
-                  final confirmed = await _showConfirmDialog(context, theme);
-                  if (!confirmed || !mounted) return;
-
-                  // Capture router before any await/rebuild
-                  final router = GoRouter.of(context);
-
-                  final result = await cartProvider.submitDownloadRequest();
-
-                  if (!mounted) return;
-
-                  if (result['success'] == true) {
-                    // Safe navigation in next frame
-                    SchedulerBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) {
-                        router.go('/request-success');
-                      }
-                    });
-                  } else if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(result['message'] as String),
-                        backgroundColor: Colors.redAccent,
-                        duration: const Duration(seconds: 4),
-                      ),
-                    );
-                  }
-                },
-          icon: const Icon(Icons.send),
-          label: const Text('Submit Download Request'),
-          style: theme.elevatedButtonTheme.style?.copyWith(
-            minimumSize: WidgetStateProperty.all(const Size(double.infinity, 56)),
-          ),
-        ),
-      ),
     );
   }
 

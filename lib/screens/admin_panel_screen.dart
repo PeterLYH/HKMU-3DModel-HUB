@@ -1,9 +1,12 @@
 // lib/screens/admin_panel_screen.dart
 
+// ignore_for_file: use_build_context_synchronously
+
 import 'dart:convert';
 // ignore: deprecated_member_use, avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 
+import 'package:emailjs/emailjs.dart' as emailjs;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -105,7 +108,6 @@ class _UsersManagementTabState extends State<UsersManagementTab> {
   bool _hasError = false;
   String _searchQuery = '';
 
-  // Batch selection
   final Set<String> _selectedUserIds = {};
   bool _selectAllUsers = false;
 
@@ -184,7 +186,7 @@ class _UsersManagementTabState extends State<UsersManagementTab> {
       builder: (ctx) => AlertDialog(
         title: const Text('Create New User'),
         content: SizedBox(
-          width: double.maxFinite,
+          width: 520,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -338,7 +340,7 @@ class _UsersManagementTabState extends State<UsersManagementTab> {
       builder: (ctx) => AlertDialog(
         title: const Text('Edit User'),
         content: SizedBox(
-          width: double.maxFinite,
+          width: 520,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -486,10 +488,8 @@ class _UsersManagementTabState extends State<UsersManagementTab> {
                   );
 
                   if (res == 'success') {
-                    // ignore: use_build_context_synchronously
                     Navigator.pop(ctx, true);
                     if (mounted) {
-                      // ignore: use_build_context_synchronously
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('Password reset successfully for ${user['email']}'),
@@ -625,212 +625,267 @@ class _UsersManagementTabState extends State<UsersManagementTab> {
     }).toList();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(32.0),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  onChanged: (value) => setState(() => _searchQuery = value),
-                  decoration: InputDecoration(
-                    hintText: 'Search by email, username or nickname...',
-                    prefixIcon: const Icon(Icons.search, size: 28),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                    filled: true,
-                    fillColor: Theme.of(context).brightness == Brightness.dark
-                        ? Colors.grey[800]
-                        : Colors.grey[100],
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                  ),
-                  style: const TextStyle(fontSize: 18),
-                ),
-              ),
-              const SizedBox(width: 24),
-              ElevatedButton.icon(
-                onPressed: _createUser,
-                icon: const Icon(Icons.person_add, size: 28),
-                label: const Text('Create User', style: TextStyle(fontSize: 18)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.hkmuGreen,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                  elevation: 2,
-                ),
-              ),
-              const SizedBox(width: 16),
-              IconButton(
-                icon: const Icon(Icons.refresh, size: 36),
-                tooltip: 'Refresh users',
-                onPressed: _loadUsers,
-                color: AppTheme.hkmuGreen,
-                padding: const EdgeInsets.all(16),
-              ),
-            ],
-          ),
+@override
+Widget build(BuildContext context) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
 
-          if (_selectedUserIds.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Row(
-                children: [
-                  Text(
-                    '${_selectedUserIds.length} selected',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                  const SizedBox(width: 32),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.delete_forever, size: 24),
-                    label: const Text('Delete Selected', style: TextStyle(fontSize: 18)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    ),
-                    onPressed: _batchDeleteUsers,
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      _selectedUserIds.clear();
-                      _selectAllUsers = false;
-                    }),
-                    child: const Text('Clear selection', style: TextStyle(fontSize: 16)),
-                  ),
-                ],
+  return Padding(
+    padding: const EdgeInsets.all(32.0),
+    child: Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                onChanged: (value) => setState(() => _searchQuery = value),
+                decoration: InputDecoration(
+                  hintText: 'Search by email, username or nickname...',
+                  prefixIcon: const Icon(Icons.search, size: 28),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                  filled: true,
+                  fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                ),
+                style: const TextStyle(fontSize: 18),
               ),
             ),
+            const SizedBox(width: 24),
+            ElevatedButton.icon(
+              onPressed: _createUser,
+              icon: const Icon(Icons.person_add, size: 28),
+              label: const Text('Create User', style: TextStyle(fontSize: 18)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.hkmuGreen,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                elevation: 2,
+              ),
+            ),
+            const SizedBox(width: 16),
+            IconButton(
+              icon: const Icon(Icons.refresh, size: 36),
+              tooltip: 'Refresh users',
+              onPressed: _loadUsers,
+              color: AppTheme.hkmuGreen,
+              padding: const EdgeInsets.all(16),
+            ),
+          ],
+        ),
 
-          const SizedBox(height: 40),
+        if (_selectedUserIds.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Row(
+              children: [
+                Text(
+                  '${_selectedUserIds.length} selected',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+                const SizedBox(width: 32),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.delete_forever, size: 24),
+                  label: const Text('Delete Selected', style: TextStyle(fontSize: 18)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  ),
+                  onPressed: _batchDeleteUsers,
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => setState(() {
+                    _selectedUserIds.clear();
+                    _selectAllUsers = false;
+                  }),
+                  child: const Text('Clear selection', style: TextStyle(fontSize: 16)),
+                ),
+              ],
+            ),
+          ),
 
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _hasError
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.error_outline, size: 100, color: Colors.red),
-                            const SizedBox(height: 32),
-                            const Text('Failed to load users', style: TextStyle(fontSize: 24)),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: _loadUsers,
-                              style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)),
-                              child: const Text('Retry', style: TextStyle(fontSize: 18)),
-                            ),
-                          ],
-                        ),
-                      )
-                    : _users.isEmpty
-                        ? const Center(child: Text('No users found yet.', style: TextStyle(fontSize: 24)))
-                        : SingleChildScrollView(
-                            scrollDirection: Axis.vertical,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: DataTable(
-                                columnSpacing: 40,
-                                headingRowHeight: 80,
-                                // ignore: deprecated_member_use
-                                dataRowHeight: 100,
-                                headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-                                dataTextStyle: const TextStyle(fontSize: 14),
-                                columns: [
-                                  DataColumn(
-                                    label: Checkbox(
-                                      value: _selectAllUsers,
-                                      onChanged: _toggleSelectAllUsers,
-                                    ),
+        const SizedBox(height: 40),
+
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _hasError
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, size: 100, color: Colors.red),
+                          const SizedBox(height: 32),
+                          const Text('Failed to load users', style: TextStyle(fontSize: 24)),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: _loadUsers,
+                            style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)),
+                            child: const Text('Retry', style: TextStyle(fontSize: 18)),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _users.isEmpty
+                      ? const Center(child: Text('No users found yet.', style: TextStyle(fontSize: 24)))
+                      : LayoutBuilder(
+                          builder: (context, constraints) {
+                            final width = constraints.maxWidth;
+
+                            final isVeryNarrow = width < 750;
+                            final isNarrow     = width < 1150;
+                            final isMedium     = width < 1450;
+
+                            final double columnSpacing   = isVeryNarrow ? 12.0 : isNarrow ? 16.0 : isMedium ? 28.0 : 48.0;
+                            final double horizontalMargin = isVeryNarrow ? 8.0 : isNarrow ? 12.0 : isMedium ? 18.0 : 32.0;
+                            final double headingHeight    = isVeryNarrow ? 52.0 : isNarrow ? 64.0 : isMedium ? 76.0 : 88.0;
+                            final double rowHeight        = isVeryNarrow ? 68.0 : isNarrow ? 84.0 : isMedium ? 100.0 : 116.0;
+
+                            final double headingFontSize  = isVeryNarrow ? 14.0 : isNarrow ? 15.5 : isMedium ? 18.0 : 20.0;
+                            final double bodyFontSize     = isVeryNarrow ? 12.5 : isNarrow ? 13.5 : isMedium ? 15.0 : 16.0;
+
+                            final double minTableWidth    = isVeryNarrow ? 900.0 : isNarrow ? 1100.0 : isMedium ? 1250.0 : 1450.0;
+
+                            return SingleChildScrollView(
+                              scrollDirection: Axis.vertical,
+                              child: Center(
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minWidth: minTableWidth,
+                                    maxWidth: width,
                                   ),
-                                  const DataColumn(label: Text('Email')),
-                                  const DataColumn(label: Text('Username')),
-                                  const DataColumn(label: Text('Nickname')),
-                                  const DataColumn(label: Text('Role')),
-                                  const DataColumn(label: Text('Joined')),
-                                  const DataColumn(label: Text('Actions')),
-                                ],
-                                rows: _filteredUsers.map((user) {
-                                  final userid = user['userid'] as String;
-                                  final email = user['email'] as String;
-                                  final role = user['role'] as String? ?? 'user';
-                                  final createdAt = DateTime.tryParse(user['created_at'] ?? '') ?? DateTime.now();
-                                  final isSelected = _selectedUserIds.contains(userid);
-
-                                  return DataRow(
-                                    color: WidgetStateProperty.resolveWith<Color?>(
-                                      (states) => isSelected ? Colors.blue.withValues(alpha: 0.08) : null,
-                                    ),
-                                    cells: [
-                                      DataCell(
-                                        Checkbox(
-                                          value: isSelected,
-                                          onChanged: (v) => _toggleUserSelection(userid, v),
-                                        ),
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: DataTable(
+                                      columnSpacing: columnSpacing,
+                                      horizontalMargin: horizontalMargin,
+                                      headingRowHeight: headingHeight,
+                                      dataRowHeight: rowHeight,
+                                      headingTextStyle: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: headingFontSize,
                                       ),
-                                      DataCell(
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 12),
-                                          child: Text(email, style: const TextStyle(fontFamily: 'monospace', fontSize: 18)),
-                                        ),
-                                      ),
-                                      DataCell(Text(user['username']?.toString() ?? '-', style: const TextStyle(fontSize: 18))),
-                                      DataCell(Text(user['nickname']?.toString() ?? '-', style: const TextStyle(fontSize: 18))),
-                                      DataCell(
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 12),
-                                          child: Chip(
-                                            label: Text(role.toUpperCase()),
-                                            backgroundColor: role == 'admin'
-                                                ? AppTheme.hkmuGreen.withValues(alpha: 0.2)
-                                                : Colors.grey[200],
-                                            labelStyle: TextStyle(
-                                              color: role == 'admin' ? AppTheme.hkmuGreen : Colors.grey[800],
-                                              fontWeight: FontWeight.bold,
-                                            ),
+                                      dataTextStyle: TextStyle(fontSize: bodyFontSize),
+                                      columns: [
+                                        DataColumn(
+                                          label: Checkbox(
+                                            value: _selectAllUsers,
+                                            onChanged: _toggleSelectAllUsers,
                                           ),
                                         ),
-                                      ),
-                                      DataCell(Text(DateFormat('dd/MM/yyyy').format(createdAt), style: const TextStyle(fontSize: 18))),
-                                      DataCell(
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            IconButton(
-                                              icon: const Icon(Icons.edit, size: 36, color: Colors.blue),
-                                              tooltip: 'Edit user',
-                                              onPressed: () => _editUser(user),
-                                              padding: const EdgeInsets.all(12),
+                                        const DataColumn(label: Text('Email')),
+                                        const DataColumn(label: Text('Username')),
+                                        const DataColumn(label: Text('Nickname')),
+                                        const DataColumn(label: Text('Role')),
+                                        const DataColumn(label: Text('Joined')),
+                                        const DataColumn(label: Text('Actions')),
+                                      ],
+                                      rows: _filteredUsers.map((user) {
+                                        final userid = user['userid'] as String;
+                                        final email = user['email'] as String;
+                                        final role = user['role'] as String? ?? 'user';
+                                        final createdAt = DateTime.tryParse(user['created_at'] ?? '') ?? DateTime.now();
+                                        final isSelected = _selectedUserIds.contains(userid);
+
+                                        return DataRow(
+                                          color: WidgetStateProperty.resolveWith<Color?>(
+                                            (states) => isSelected ? Colors.blue.withOpacity(0.08) : null,
+                                          ),
+                                          cells: [
+                                            DataCell(
+                                              Checkbox(
+                                                value: isSelected,
+                                                onChanged: (v) => _toggleUserSelection(userid, v),
+                                              ),
                                             ),
-                                              IconButton(
-                                                      icon: SvgPicture.asset(
-                                                        'assets/icons/password.svg',
-                                                        width: 36,
-                                                        height: 36,
-                                                        colorFilter: const ColorFilter.mode(Colors.green, BlendMode.srcIn),
-                                                      ),
-                                                      tooltip: 'Reset Password',
-                                                      onPressed: () => _resetPassword(user),
-                                                      padding: const EdgeInsets.all(12),
+                                            DataCell(
+                                              Padding(
+                                                padding: EdgeInsets.symmetric(vertical: isVeryNarrow ? 8 : 12),
+                                                child: Text(
+                                                  email,
+                                                  style: TextStyle(
+                                                    fontFamily: 'monospace',
+                                                    fontSize: isVeryNarrow ? 14 : isNarrow ? 15.5 : isMedium ? 16.5 : 18,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            DataCell(
+                                              Text(
+                                                user['username']?.toString() ?? '-',
+                                                style: TextStyle(fontSize: isVeryNarrow ? 14 : isNarrow ? 15.5 : isMedium ? 16.5 : 18),
+                                              ),
+                                            ),
+                                            DataCell(
+                                              Text(
+                                                user['nickname']?.toString() ?? '-',
+                                                style: TextStyle(fontSize: isVeryNarrow ? 14 : isNarrow ? 15.5 : isMedium ? 16.5 : 18),
+                                              ),
+                                            ),
+                                            DataCell(
+                                              Padding(
+                                                padding: EdgeInsets.symmetric(vertical: isVeryNarrow ? 8 : 12),
+                                                child: Chip(
+                                                  label: Text(role.toUpperCase()),
+                                                  backgroundColor: role == 'admin'
+                                                      ? AppTheme.hkmuGreen.withOpacity(0.2)
+                                                      : Colors.grey[200],
+                                                  labelStyle: TextStyle(
+                                                    color: role == 'admin' ? AppTheme.hkmuGreen : Colors.grey[800],
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: isVeryNarrow ? 12 : isNarrow ? 13 : isMedium ? 14 : 15,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            DataCell(
+                                              Text(
+                                                DateFormat('dd/MM/yyyy').format(createdAt),
+                                                style: TextStyle(fontSize: isVeryNarrow ? 13.5 : isNarrow ? 14.5 : isMedium ? 15.5 : 18),
+                                              ),
+                                            ),
+                                            DataCell(
+                                              Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  IconButton(
+                                                    icon: const Icon(Icons.edit, color: Colors.blue),
+                                                    iconSize: isVeryNarrow ? 32 : 36,
+                                                    tooltip: 'Edit user',
+                                                    onPressed: () => _editUser(user),
+                                                    padding: const EdgeInsets.all(8),
+                                                  ),
+                                                  IconButton(
+                                                    icon: SvgPicture.asset(
+                                                      'assets/icons/password.svg',
+                                                      width: isVeryNarrow ? 32 : 36,
+                                                      height: isVeryNarrow ? 32 : 36,
+                                                      colorFilter: const ColorFilter.mode(Colors.green, BlendMode.srcIn),
                                                     ),
-                                            IconButton(
-                                              icon: const Icon(Icons.delete_forever, size: 36, color: Colors.red),
-                                              tooltip: 'Delete user',
-                                              onPressed: () => _deleteUser(userid, email),
-                                              padding: const EdgeInsets.all(12),
+                                                    tooltip: 'Reset Password',
+                                                    onPressed: () => _resetPassword(user),
+                                                    padding: const EdgeInsets.all(8),
+                                                  ),
+                                                  IconButton(
+                                                    icon: const Icon(Icons.delete_forever, color: Colors.red),
+                                                    iconSize: isVeryNarrow ? 32 : 36,
+                                                    tooltip: 'Delete user',
+                                                    onPressed: () => _deleteUser(userid, email),
+                                                    padding: const EdgeInsets.all(8),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
                                           ],
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                }).toList(),
+                                        );
+                                      }).toList(),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
+                            );
+                          },
+                        ),
           ),
         ],
       ),
@@ -839,10 +894,8 @@ class _UsersManagementTabState extends State<UsersManagementTab> {
 }
 
 // ==================== MODELS MANAGEMENT TAB ====================
-
 class ModelsManagementTab extends StatefulWidget {
   const ModelsManagementTab({super.key});
-
   @override
   State<ModelsManagementTab> createState() => _ModelsManagementTabState();
 }
@@ -852,10 +905,8 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
   bool _loading = true;
   bool _hasError = false;
   String _searchQuery = '';
-
   final Set<dynamic> _selectedModelIds = {};
   bool _selectAllModels = false;
-
   static const String _zipFunctionUrl = 'https://mygplwghoudapvhdcrke.supabase.co/functions/v1/zip-models';
 
   @override
@@ -871,7 +922,6 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
       _selectedModelIds.clear();
       _selectAllModels = false;
     });
-
     try {
       final modelResponse = await Supabase.instance.client
           .from('models')
@@ -880,15 +930,13 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
 
       List<Map<String, dynamic>> models = List.from(modelResponse);
 
-      final Set<String> userIds =
-          models.map((m) => m['user_id'] as String?).whereType<String>().toSet();
+      final Set<String> userIds = models.map((m) => m['user_id'] as String?).whereType<String>().toSet();
       Map<String, String> emailMap = {};
       if (userIds.isNotEmpty) {
         final userResponse = await Supabase.instance.client
             .from('users')
             .select('userid, email')
             .inFilter('userid', userIds.toList());
-
         emailMap = {for (var u in userResponse) u['userid'] as String: u['email'] as String};
       }
 
@@ -901,12 +949,10 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
         _loading = false;
       });
     } catch (e) {
-      debugPrint('Error loading models: $e');
       setState(() {
         _hasError = true;
         _loading = false;
       });
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to load models.'), backgroundColor: Colors.red),
@@ -915,7 +961,6 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
     }
   }
 
-  // Toggle select all checkbox
   void _toggleSelectAllModels(bool? value) {
     setState(() {
       _selectAllModels = value ?? false;
@@ -927,7 +972,6 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
     });
   }
 
-  // Toggle individual row selection
   void _toggleModelSelection(dynamic id, bool? selected) {
     setState(() {
       if (selected == true) {
@@ -939,19 +983,14 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
     });
   }
 
-  // Batch delete selected models
   Future<void> _batchDeleteModels() async {
     if (_selectedModelIds.isEmpty) return;
-
     final count = _selectedModelIds.length;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Selected Models'),
-        content: Text(
-          'Are you sure you want to permanently delete $count model(s)?\n'
-          'This action cannot be undone.',
-        ),
+        content: Text('Are you sure you want to permanently delete $count model(s)?\nThis action cannot be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
@@ -962,11 +1001,8 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
         ],
       ),
     );
-
     if (confirmed != true) return;
-
     setState(() => _loading = true);
-
     try {
       for (final id in List.from(_selectedModelIds)) {
         final model = _models.firstWhere((m) => m['id'] == id);
@@ -975,21 +1011,18 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
             .remove([model['file_path'], model['thumbnail_path']]);
         await Supabase.instance.client.from('models').delete().eq('id', id);
       }
-
       setState(() {
         _models.removeWhere((m) => _selectedModelIds.contains(m['id']));
         _selectedModelIds.clear();
         _selectAllModels = false;
         _loading = false;
       });
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$count model(s) deleted successfully'), backgroundColor: AppTheme.hkmuGreen),
         );
       }
     } catch (e) {
-      debugPrint('Batch delete error: $e');
       setState(() => _loading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -999,24 +1032,19 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
     }
   }
 
-  // Batch download selected models as ZIP (via Edge Function)
   Future<void> _batchDownloadAsZip() async {
     if (_selectedModelIds.isEmpty) return;
-
     final selected = _models.where((m) => _selectedModelIds.contains(m['id'])).toList();
     final filePaths = selected.map((m) => m['file_path'] as String?).whereType<String>().toList();
-
     if (filePaths.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No downloadable files found')),
       );
       return;
     }
-
     try {
       final session = Supabase.instance.client.auth.currentSession;
       if (session == null) throw 'Not authenticated';
-
       final response = await http.post(
         Uri.parse(_zipFunctionUrl),
         headers: {
@@ -1025,47 +1053,41 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
         },
         body: jsonEncode({'filePaths': filePaths}),
       );
-
       if (response.statusCode != 200) {
         throw 'Server error: ${response.statusCode} - ${response.body}';
       }
-
-      // Trigger browser download of ZIP
       final blob = html.Blob([response.bodyBytes], 'application/zip');
       final url = html.Url.createObjectUrlFromBlob(blob);
-      final _ = html.AnchorElement(href: url)
+      html.AnchorElement(href: url)
         ..setAttribute('download', 'models_${DateTime.now().toIso8601String().substring(0, 10)}.zip')
         ..click();
       html.Url.revokeObjectUrl(url);
-
-      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Downloaded ${filePaths.length} models as ZIP file'),
           backgroundColor: AppTheme.hkmuGreen,
         ),
       );
-
-      // Optional: clear selection after successful download
       setState(() {
         _selectedModelIds.clear();
         _selectAllModels = false;
       });
     } catch (e) {
-      debugPrint('ZIP download error: $e');
-      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to create ZIP: $e'), backgroundColor: Colors.red),
       );
     }
   }
 
-  // ===================== SINGLE MODEL OPERATIONS =====================
-
   Future<void> _editModel(Map<String, dynamic> model) async {
     final nameController = TextEditingController(text: model['name']);
     final descController = TextEditingController(text: model['description'] ?? '');
-    String selectedCategory = model['category'] ?? 'Other';
+    final sourceController = TextEditingController(text: model['source'] ?? 'HKMU');
+    final licenseController = TextEditingController(text: model['license_type'] ?? 'Non-commercial');
+    final ackController = TextEditingController(text: model['acknowledgement'] ?? '');
+
+    final cats = (model['categories'] as List<dynamic>?)?.cast<String>() ?? [];
+    List<String> selectedCategories = List.from(cats);
 
     PlatformFile? newModelFile;
     String? newModelFileName;
@@ -1078,8 +1100,8 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Edit Model'),
           content: SizedBox(
-            width: double.maxFinite,
-            height: 600,
+            width: 600,
+            height: 700,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1088,7 +1110,7 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
                     onPressed: () async {
                       FilePickerResult? result = await FilePicker.platform.pickFiles(
                         type: FileType.custom,
-                        allowedExtensions: ['glb', 'gltf', 'obj', 'fbx', 'stl', 'blend'],
+                        allowedExtensions: ['glb', 'gltf', 'obj', 'fbx', 'stl', 'blend', 'zip'],
                         withData: true,
                       );
                       if (result != null && result.files.single.bytes != null) {
@@ -1134,17 +1156,17 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
                   if (newThumbnailFile?.bytes != null)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.memory(newThumbnailFile!.bytes!, height: 200, fit: BoxFit.cover),
+                      child: Image.memory(newThumbnailFile!.bytes!, height: 220, fit: BoxFit.cover),
                     )
                   else
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Image.network(
                         Supabase.instance.client.storage.from('3d-models').getPublicUrl(model['thumbnail_path']),
-                        height: 200,
+                        height: 220,
                         fit: BoxFit.cover,
                         errorBuilder: (_, _, _) => Container(
-                          height: 200,
+                          height: 220,
                           color: Colors.grey[300],
                           child: const Icon(Icons.image_not_supported, size: 80),
                         ),
@@ -1158,19 +1180,74 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
                   const SizedBox(height: 16),
                   TextField(
                     controller: descController,
-                    maxLines: 4,
+                    maxLines: 5,
                     decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()),
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    initialValue: selectedCategory,
-                    decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
-                    items: ['Architecture', 'Characters', 'Vehicles', 'Nature', 'Props', 'Other']
-                        .map((cat) => DropdownMenuItem(value: cat, child: Text(cat)))
+                    value: sourceController.text.isEmpty ? 'HKMU' : sourceController.text,
+                    decoration: const InputDecoration(labelText: 'Source', border: OutlineInputBorder()),
+                    items: const ['HKMU', 'Purchased', 'Vendor']
+                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                         .toList(),
-                    onChanged: (val) {
-                      if (val != null) selectedCategory = val;
+                    onChanged: (v) {
+                      if (v != null) sourceController.text = v;
                     },
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: licenseController.text.isEmpty ? 'Non-commercial' : licenseController.text,
+                    decoration: const InputDecoration(labelText: 'License / Usage', border: OutlineInputBorder()),
+                    items: const ['Non-commercial', 'Commercial']
+                        .map((l) => DropdownMenuItem(value: l, child: Text(l)))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) licenseController.text = v;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: ackController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(labelText: 'Acknowledgement / Credits', border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text('Categories (select multiple)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      'Architecture',
+                      'Characters',
+                      'Vehicles',
+                      'Nature',
+                      'Props',
+                      'Fantasy',
+                      'Sci-Fi',
+                      'Low Poly',
+                      'Realistic',
+                      'Animated',
+                      'Other',
+                    ].map((cat) {
+                      final isSelected = selectedCategories.contains(cat);
+                      return FilterChip(
+                        label: Text(cat),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setDialogState(() {
+                            if (selected) {
+                              selectedCategories.add(cat);
+                            } else {
+                              selectedCategories.remove(cat);
+                            }
+                          });
+                        },
+                        selectedColor: AppTheme.hkmuGreen.withOpacity(0.3),
+                        checkmarkColor: AppTheme.hkmuGreen,
+                        backgroundColor: Colors.grey[200],
+                      );
+                    }).toList(),
                   ),
                 ],
               ),
@@ -1194,12 +1271,14 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
       Map<String, dynamic> updates = {
         'name': nameController.text.trim(),
         'description': descController.text.trim(),
-        'category': selectedCategory,
+        'source': sourceController.text,
+        'license_type': licenseController.text,
+        'acknowledgement': ackController.text.trim().isEmpty ? null : ackController.text.trim(),
+        'categories': selectedCategories,
       };
 
       String? newModelPath;
       String? newThumbPath;
-
       final timestamp = DateTime.now().millisecondsSinceEpoch;
 
       if (newModelFile != null) {
@@ -1246,8 +1325,7 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Model'),
-        content: Text(
-            'Delete "${model['name']}"?\nThis will permanently remove the file and thumbnail.'),
+        content: Text('Delete "${model['name']}"?\nThis will permanently remove the file and thumbnail.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
@@ -1258,21 +1336,16 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
         ],
       ),
     );
-
     if (confirm != true) return;
-
     try {
       await Supabase.instance.client.storage
           .from('3d-models')
           .remove([model['file_path'], model['thumbnail_path']]);
-
       await Supabase.instance.client.from('models').delete().eq('id', model['id']);
-
       setState(() {
         _models.remove(model);
         _selectedModelIds.remove(model['id']);
       });
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Model deleted successfully'), backgroundColor: AppTheme.hkmuGreen),
@@ -1296,28 +1369,23 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
         );
         return;
       }
-
       final signedUrl = await Supabase.instance.client.storage
           .from('3d-models')
           .createSignedUrl(filePath, 3600);
-
       final suggestedName = model['name'] != null
           ? '${model['name']}${model['file_type'] ?? ''}'
           : 'model${model['file_type'] ?? ''}';
-
       final _ = html.AnchorElement(href: signedUrl)
         ..setAttribute('download', suggestedName)
         ..style.display = 'none'
         ..click()
         ..remove();
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Downloading $suggestedName...'), backgroundColor: AppTheme.hkmuGreen),
         );
       }
     } catch (e) {
-      debugPrint('Download error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to start download: $e'), backgroundColor: Colors.red),
@@ -1330,9 +1398,11 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
     if (_searchQuery.isEmpty) return _models;
     final query = _searchQuery.toLowerCase();
     return _models.where((model) {
-      return (model['name']?.toString().toLowerCase() ?? '').contains(query) ||
-          (model['category']?.toString().toLowerCase() ?? '').contains(query) ||
-          (model['file_type']?.toString().toLowerCase() ?? '').contains(query);
+      final name = model['name']?.toString().toLowerCase() ?? '';
+      final fileType = model['file_type']?.toString().toLowerCase() ?? '';
+      final cats = (model['categories'] as List<dynamic>?)?.cast<String>() ?? [];
+      final catString = cats.join(' ').toLowerCase();
+      return name.contains(query) || fileType.contains(query) || catString.contains(query);
     }).toList();
   }
 
@@ -1342,6 +1412,7 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.all(32.0),
       child: Column(
@@ -1356,9 +1427,7 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
                     prefixIcon: const Icon(Icons.search, size: 28),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
                     filled: true,
-                    fillColor: Theme.of(context).brightness == Brightness.dark
-                        ? Colors.grey[800]
-                        : Colors.grey[100],
+                    fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
                     contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
                   ),
                   style: const TextStyle(fontSize: 18),
@@ -1386,8 +1455,6 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
               ),
             ],
           ),
-
-          // Batch actions bar
           if (_selectedModelIds.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -1422,9 +1489,7 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
                 ],
               ),
             ),
-
           const SizedBox(height: 40),
-
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
@@ -1437,113 +1502,168 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
                             const SizedBox(height: 32),
                             const Text('Failed to load models', style: TextStyle(fontSize: 24)),
                             const SizedBox(height: 16),
-                            ElevatedButton(onPressed: _loadModels, child: const Text('Retry', style: TextStyle(fontSize: 18))),
+                            ElevatedButton(
+                              onPressed: _loadModels,
+                              child: const Text('Retry', style: TextStyle(fontSize: 18)),
+                            ),
                           ],
                         ),
                       )
                     : _models.isEmpty
                         ? const Center(child: Text('No models uploaded yet.', style: TextStyle(fontSize: 24)))
-                        : SingleChildScrollView(
-                            scrollDirection: Axis.vertical,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: DataTable(
-                                columnSpacing: 40,
-                                headingRowHeight: 80,
-                                // ignore: deprecated_member_use
-                                dataRowHeight: 100,
-                                headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-                                dataTextStyle: const TextStyle(fontSize: 14),
-                                columns: [
-                                  DataColumn(
-                                    label: Checkbox(
-                                      value: _selectAllModels,
-                                      onChanged: _toggleSelectAllModels,
+                        : LayoutBuilder(
+                            builder: (context, constraints) {
+                              final width = constraints.maxWidth;
+                              final isVeryNarrow = width < 750;
+                              final isNarrow = width < 1150;
+                              final isMedium = width < 1450;
+                              final double columnSpacing = isVeryNarrow ? 12.0 : isNarrow ? 16.0 : isMedium ? 28.0 : 48.0;
+                              final double horizontalMargin = isVeryNarrow ? 8.0 : isNarrow ? 12.0 : isMedium ? 18.0 : 32.0;
+                              final double headingHeight = isVeryNarrow ? 52.0 : isNarrow ? 64.0 : isMedium ? 76.0 : 88.0;
+                              final double rowHeight = isVeryNarrow ? 68.0 : isNarrow ? 84.0 : isMedium ? 100.0 : 116.0;
+                              final double headingFontSize = isVeryNarrow ? 14.0 : isNarrow ? 15.5 : isMedium ? 18.0 : 20.0;
+                              final double bodyFontSize = isVeryNarrow ? 12.5 : isNarrow ? 13.5 : isMedium ? 15.0 : 16.0;
+                              final double minTableWidth = isVeryNarrow ? 900.0 : isNarrow ? 1100.0 : isMedium ? 1300.0 : 1500.0;
+
+                              return SingleChildScrollView(
+                                scrollDirection: Axis.vertical,
+                                child: Center(
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(minWidth: minTableWidth, maxWidth: width),
+                                    child: SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: DataTable(
+                                        columnSpacing: columnSpacing,
+                                        horizontalMargin: horizontalMargin,
+                                        headingRowHeight: headingHeight,
+                                        dataRowHeight: rowHeight,
+                                        headingTextStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: headingFontSize),
+                                        dataTextStyle: TextStyle(fontSize: bodyFontSize),
+                                        columns: [
+                                          DataColumn(
+                                            label: Checkbox(
+                                              value: _selectAllModels,
+                                              onChanged: _toggleSelectAllModels,
+                                            ),
+                                          ),
+                                          const DataColumn(label: Text('Thumbnail')),
+                                          const DataColumn(label: Text('Name')),
+                                          const DataColumn(label: Text('Categories')),
+                                          const DataColumn(label: Text('Uploader')),
+                                          const DataColumn(label: Text('Uploaded')),
+                                          const DataColumn(label: Text('Actions')),
+                                        ],
+                                        rows: _filteredModels.map((model) {
+                                          final id = model['id'];
+                                          final createdAt = DateTime.tryParse(model['created_at'] ?? '') ?? DateTime.now();
+                                          final uploaderEmail = model['uploader_email'] ?? 'Unknown';
+                                          final isSelected = _selectedModelIds.contains(id);
+                                          final cats = (model['categories'] as List<dynamic>?)?.cast<String>() ?? [];
+                                          final displayCats = cats.isEmpty ? '—' : cats.join(', ');
+
+                                          return DataRow(
+                                            color: WidgetStateProperty.resolveWith<Color?>(
+                                              (states) => isSelected ? Colors.blue.withOpacity(0.08) : null,
+                                            ),
+                                            cells: [
+                                              DataCell(
+                                                Checkbox(
+                                                  value: isSelected,
+                                                  onChanged: (val) => _toggleModelSelection(id, val),
+                                                ),
+                                              ),
+                                              DataCell(
+                                                ClipRRect(
+                                                  borderRadius: BorderRadius.circular(12),
+                                                  child: Image.network(
+                                                    getThumbnailUrl(model['thumbnail_path']),
+                                                    width: isVeryNarrow ? 80 : 100,
+                                                    height: isVeryNarrow ? 80 : 100,
+                                                    fit: BoxFit.cover,
+                                                    errorBuilder: (_, _, _) => Container(
+                                                      width: isVeryNarrow ? 80 : 100,
+                                                      height: isVeryNarrow ? 80 : 100,
+                                                      color: Colors.grey[300],
+                                                      child: const Icon(Icons.image_not_supported, size: 50),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              DataCell(
+                                                Padding(
+                                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                                  child: Text(
+                                                    model['name'] ?? 'Untitled',
+                                                    style: TextStyle(
+                                                      fontSize: isVeryNarrow ? 15 : isNarrow ? 16.5 : isMedium ? 18 : 19,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ),
+                                              DataCell(
+                                                Padding(
+                                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                                  child: Text(
+                                                    displayCats,
+                                                    style: TextStyle(fontSize: isVeryNarrow ? 13 : isNarrow ? 14 : isMedium ? 15 : 16),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ),
+                                              DataCell(
+                                                Text(
+                                                  uploaderEmail,
+                                                  style: TextStyle(fontSize: isVeryNarrow ? 13.5 : isNarrow ? 14.5 : isMedium ? 15.5 : 17),
+                                                ),
+                                              ),
+                                              DataCell(
+                                                Text(
+                                                  DateFormat('dd/MM/yyyy').format(createdAt),
+                                                  style: TextStyle(fontSize: isVeryNarrow ? 13.5 : isNarrow ? 14.5 : isMedium ? 15.5 : 18),
+                                                ),
+                                              ),
+                                              DataCell(
+                                                Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    IconButton(
+                                                      icon: const Icon(Icons.edit, color: Colors.blue),
+                                                      iconSize: isVeryNarrow ? 32 : 36,
+                                                      tooltip: 'Edit model',
+                                                      onPressed: () => _editModel(model),
+                                                      padding: const EdgeInsets.all(8),
+                                                    ),
+                                                    IconButton(
+                                                      icon: const Icon(Icons.download, color: Colors.green),
+                                                      iconSize: isVeryNarrow ? 32 : 36,
+                                                      tooltip: 'Download model',
+                                                      onPressed: () => _downloadModel(model),
+                                                      padding: const EdgeInsets.all(8),
+                                                    ),
+                                                    IconButton(
+                                                      icon: const Icon(Icons.delete_forever, color: Colors.red),
+                                                      iconSize: isVeryNarrow ? 32 : 36,
+                                                      tooltip: 'Delete model',
+                                                      onPressed: () => _deleteModel(model),
+                                                      padding: const EdgeInsets.all(8),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        }).toList(),
+                                      ),
                                     ),
                                   ),
-                                  const DataColumn(label: Text('Thumbnail')),
-                                  const DataColumn(label: Text('Model Name')),
-                                  const DataColumn(label: Text('Uploader')),
-                                  const DataColumn(label: Text('Uploaded')),
-                                  const DataColumn(label: Text('Actions')),
-                                ],
-                                rows: _filteredModels.map((model) {
-                                  final id = model['id'];
-                                  final createdAt = DateTime.tryParse(model['created_at'] ?? '') ?? DateTime.now();
-                                  final uploaderEmail = model['uploader_email'] ?? 'Unknown';
-                                  final isSelected = _selectedModelIds.contains(id);
-
-                                  return DataRow(
-                                    color: WidgetStateProperty.resolveWith<Color?>(
-                                      (states) => isSelected ? Colors.blue.withValues(alpha: 0.08) : null,
-                                    ),
-                                    cells: [
-                                      DataCell(
-                                        Checkbox(
-                                          value: isSelected,
-                                          onChanged: (val) => _toggleModelSelection(id, val),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(16),
-                                          child: Image.network(
-                                            getThumbnailUrl(model['thumbnail_path']),
-                                            width: 100,
-                                            height: 100,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, _, _) => Container(
-                                              width: 100,
-                                              height: 100,
-                                              color: Colors.grey[300],
-                                              child: const Icon(Icons.image_not_supported, size: 50),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 12),
-                                          child: Text(
-                                            model['name'] ?? 'Untitled',
-                                            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w600),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(Text(uploaderEmail, style: const TextStyle(fontSize: 17))),
-                                      DataCell(Text(DateFormat('dd/MM/yyyy').format(createdAt), style: const TextStyle(fontSize: 18))),
-                                      DataCell(
-                                        Row(
-                                          children: [
-                                            IconButton(
-                                              icon: const Icon(Icons.edit, size: 36, color: Colors.blue),
-                                              tooltip: 'Edit model',
-                                              onPressed: () => _editModel(model),
-                                              padding: const EdgeInsets.all(12),
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(Icons.download, size: 36, color: Colors.green),
-                                              tooltip: 'Download single model',
-                                              onPressed: () => _downloadModel(model),
-                                              padding: const EdgeInsets.all(12),
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(Icons.delete_forever, size: 36, color: Colors.red),
-                                              tooltip: 'Delete model',
-                                              onPressed: () => _deleteModel(model),
-                                              padding: const EdgeInsets.all(12),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                          ),
+                                ),
+                              );
+                          },
+                        ),
           ),
         ],
       ),
@@ -1552,6 +1672,54 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
 }
 
 // ==================== DOWNLOAD REQUESTS MANAGEMENT TAB ====================
+const String emailjsServiceId = 'service_fbj4ijv';
+const String emailjsPublicKey = '_bhZrWri1RJ_HqbnP';
+const String emailjsPrivateKey = '8Gn3g6qpsHxf3ZDk3BzBm';
+const String templateProcessed = 'template_l1m3ofj';
+const String templateRejected = 'template_qigszyj';
+
+Future<bool> sendRequestStatusEmail({
+  required String toEmail,
+  required String userName,
+  required String status,
+  String? rejectReason,
+  List<String> modelNames = const [],
+  String? downloadUrl,
+}) async {
+  try {
+    final template = status == 'processed' ? templateProcessed : templateRejected;
+
+    final templateParams = {
+      'user_name': userName.isNotEmpty ? userName : 'User',
+      'email': toEmail,
+      'model_list': modelNames.isEmpty ? '—' : '• ${modelNames.join('\n• ')}',
+      if (status == 'rejected') 'reason': rejectReason ?? 'Not specified',
+      'status': status.toUpperCase(),
+      if (status == 'processed' && downloadUrl != null) 'download_url': downloadUrl,
+      if (status == 'processed' && downloadUrl != null) 'download_button_text': 'Download Your Models Now',
+    };
+
+    await emailjs.send(
+      emailjsServiceId,
+      template,
+      templateParams,
+      emailjs.Options(
+        publicKey: emailjsPublicKey,
+        privateKey: emailjsPrivateKey,
+      ),
+    );
+
+    debugPrint('Email sent successfully to $toEmail');
+    return true;
+  } catch (error) {
+    debugPrint('Email send failed: $error');
+    if (error is emailjs.EmailJSResponseStatus) {
+      debugPrint('→ Status: ${error.status}, Text: ${error.text}');
+    }
+    return false;
+  }
+}
+
 class DownloadRequestsTab extends StatefulWidget {
   const DownloadRequestsTab({super.key});
 
@@ -1566,6 +1734,7 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
   String _searchQuery = '';
   final Set<String> _selectedIds = {};
   bool _selectAll = false;
+  final Map<String, bool> _processingRequests = {};
 
   @override
   void initState() {
@@ -1584,7 +1753,18 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
     try {
       final requestsResp = await Supabase.instance.client
           .from('download_requests')
-          .select('id, user_id, email, model_ids, status, created_at, updated_at')
+          .select('''
+            id, 
+            user_id, 
+            email, 
+            model_ids, 
+            status, 
+            created_at, 
+            updated_at, 
+            description,
+            processed_by,
+            reject_reason
+          ''')
           .order('created_at', ascending: false);
 
       final List<Map<String, dynamic>> requests = List.from(requestsResp);
@@ -1661,9 +1841,6 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
     });
   }
 
-  // ────────────────────────────────────────────────
-  // Get file paths for all models in a request
-  // ────────────────────────────────────────────────
   Future<List<String>> _getModelFilePaths(String requestId) async {
     try {
       final req = _requests.firstWhere((r) => r['id'] == requestId, orElse: () => {});
@@ -1687,88 +1864,114 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
     }
   }
 
-Future<void> _downloadRequestAsZip(String requestId) async {
-  final filePaths = await _getModelFilePaths(requestId);
-
-  if (filePaths.isEmpty) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No downloadable files found in this request'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-    }
-    return;
-  }
-
-  try {
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session == null) throw 'Not authenticated';
-
-    final response = await http.post(
-      Uri.parse('https://mygplwghoudapvhdcrke.supabase.co/functions/v1/zip-models'),
-      headers: {
-        'Authorization': 'Bearer ${session.accessToken}',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({'filePaths': filePaths}),
-    );
-
-    if (response.statusCode != 200) {
-      throw 'Server error: ${response.statusCode} - ${response.body}';
-    }
-
-    // Trigger browser download — same pattern as Models tab
-    final blob = html.Blob([response.bodyBytes], 'application/zip');
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    final _ = html.AnchorElement(href: url)
-      ..setAttribute('download', 'request_${requestId}_${DateTime.now().toIso8601String().substring(0, 10)}.zip')
-      ..click();
-    html.Url.revokeObjectUrl(url);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Downloaded ${filePaths.length} model${filePaths.length == 1 ? "" : "s"} as ZIP file'),
-          backgroundColor: AppTheme.hkmuGreen,
-        ),
-      );
-    }
-  } catch (e) {
-    debugPrint('ZIP download error: $e');
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to create ZIP: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-}
-
-  Future<void> _updateStatus(String id, String newStatus) async {
+  Future<String?> _createZipAndGetDownloadUrl(String requestId) async {
     try {
-      // 1. Update status in database
-      await Supabase.instance.client
-          .from('download_requests')
-          .update({
-            'status': newStatus,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', id);
+      final filePaths = await _getModelFilePaths(requestId);
+      if (filePaths.isEmpty) return null;
 
-      // 2. If processed → automatically download ZIP
-      if (newStatus == 'processed') {
-        await _downloadRequestAsZip(id);
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session == null) throw 'Not authenticated';
+
+      final response = await http.post(
+        Uri.parse('https://mygplwghoudapvhdcrke.supabase.co/functions/v1/zip-models'),
+        headers: {
+          'Authorization': 'Bearer ${session.accessToken}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'filePaths': filePaths}),
+      );
+
+      if (response.statusCode != 200) {
+        throw 'Server returned ${response.statusCode} – ${response.body}';
       }
 
-      // 3. Update local UI state
+      final json = jsonDecode(response.body);
+      if (json['success'] != true || json['downloadUrl'] == null) {
+        throw 'Invalid response from zip function';
+      }
+
+      return json['downloadUrl'] as String;
+    } catch (e) {
+      debugPrint('Failed to create ZIP URL: $e');
+      return null;
+    }
+  }
+
+  Future<void> _updateStatus(
+    String id,
+    String newStatus, {
+    String? rejectReason,
+  }) async {
+    if (_processingRequests[id] == true) return;
+
+    setState(() {
+      _processingRequests[id] = true;
+    });
+
+    try {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) throw 'Not authenticated';
+
+      final updateData = <String, dynamic>{
+        'status': newStatus,
+        'updated_at': DateTime.now().toIso8601String(),
+        'processed_by': currentUser.id,
+      };
+
+      if (newStatus == 'rejected') {
+        updateData['reject_reason'] = rejectReason?.isNotEmpty == true ? rejectReason : null;
+      }
+
+      await Supabase.instance.client
+          .from('download_requests')
+          .update(updateData)
+          .eq('id', id);
+
       final req = _requests.firstWhere((r) => r['id'] == id);
+      final emailAddr = req['email'] as String? ?? '';
+      final modelNames = (req['model_names'] as List?)?.cast<String>() ?? [];
+      final userName = emailAddr.split('@').first.trim();
+
+      String? downloadUrl;
+      if (newStatus == 'processed') {
+        downloadUrl = await _createZipAndGetDownloadUrl(id);
+        if (downloadUrl == null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Status updated, but could not generate download link'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+
+      if (emailAddr.isNotEmpty && (newStatus == 'processed' || newStatus == 'rejected')) {
+        final emailSent = await sendRequestStatusEmail(
+          toEmail: emailAddr,
+          userName: userName,
+          status: newStatus,
+          rejectReason: newStatus == 'rejected' ? (rejectReason ?? 'Not specified') : null,
+          modelNames: modelNames,
+          downloadUrl: downloadUrl,
+        );
+
+        if (!emailSent && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Status updated, but email notification failed'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+
       setState(() {
         req['status'] = newStatus;
         req['updated_at'] = DateTime.now().toIso8601String();
+        req['processed_by'] = currentUser.id;
+        if (newStatus == 'rejected') {
+          req['reject_reason'] = rejectReason;
+        }
       });
 
       if (mounted) {
@@ -1776,8 +1979,8 @@ Future<void> _downloadRequestAsZip(String requestId) async {
           SnackBar(
             content: Text(
               newStatus == 'processed'
-                  ? 'Request processed & ZIP downloaded'
-                  : 'Request marked as $newStatus',
+                  ? 'Request processed – download link sent by email'
+                  : 'Request marked as rejected${rejectReason?.isNotEmpty == true ? ' with reason' : ''}',
             ),
             backgroundColor: AppTheme.hkmuGreen,
           ),
@@ -1789,6 +1992,12 @@ Future<void> _downloadRequestAsZip(String requestId) async {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to update status: $e'), backgroundColor: Colors.red),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _processingRequests.remove(id);
+        });
       }
     }
   }
@@ -1826,6 +2035,10 @@ Future<void> _downloadRequestAsZip(String requestId) async {
 
     if (confirmed != true) return;
 
+    for (final id in toDelete) {
+      setState(() => _processingRequests[id] = true);
+    }
+
     try {
       await Supabase.instance.client
           .from('download_requests')
@@ -1850,6 +2063,14 @@ Future<void> _downloadRequestAsZip(String requestId) async {
           const SnackBar(content: Text('Failed to delete requests'), backgroundColor: Colors.red),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() {
+          for (final id in toDelete) {
+            _processingRequests.remove(id);
+          }
+        });
+      }
     }
   }
 
@@ -1859,285 +2080,408 @@ Future<void> _downloadRequestAsZip(String requestId) async {
 
     return Padding(
       padding: const EdgeInsets.all(32.0),
-      child: Column(
+      child: Stack(
         children: [
-          Row(
+          Column(
             children: [
-              Expanded(
-                child: TextField(
-                  onChanged: (value) => setState(() => _searchQuery = value),
-                  decoration: InputDecoration(
-                    hintText: 'Search by email or status...',
-                    prefixIcon: const Icon(Icons.search, size: 28),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                    filled: true,
-                    fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      onChanged: (value) => setState(() => _searchQuery = value),
+                      decoration: InputDecoration(
+                        hintText: 'Search by email or status...',
+                        prefixIcon: const Icon(Icons.search, size: 28),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                        filled: true,
+                        fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                      ),
+                      style: const TextStyle(fontSize: 18),
+                    ),
                   ),
-                  style: const TextStyle(fontSize: 18),
-                ),
+                  const SizedBox(width: 24),
+                  IconButton(
+                    icon: const Icon(Icons.refresh, size: 36),
+                    tooltip: 'Refresh',
+                    color: AppTheme.hkmuGreen,
+                    padding: const EdgeInsets.all(16),
+                    onPressed: _loadRequests,
+                  ),
+                ],
               ),
-              const SizedBox(width: 24),
-              IconButton(
-                icon: const Icon(Icons.refresh, size: 36),
-                tooltip: 'Refresh',
-                color: AppTheme.hkmuGreen,
-                padding: const EdgeInsets.all(16),
-                onPressed: _loadRequests,
+
+              if (_selectedIds.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${_selectedIds.length} selected',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      ),
+                      const SizedBox(width: 32),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.delete_forever, size: 24),
+                        label: const Text('Delete Selected', style: TextStyle(fontSize: 18)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        ),
+                        onPressed: _batchDeleteProcessedOrRejected,
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => setState(() {
+                          _selectedIds.clear();
+                          _selectAll = false;
+                        }),
+                        child: const Text('Clear selection', style: TextStyle(fontSize: 16)),
+                      ),
+                    ],
+                  ),
+                ),
+
+              const SizedBox(height: 40),
+
+              Expanded(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _hasError
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.error_outline, size: 100, color: Colors.red),
+                                const SizedBox(height: 32),
+                                const Text('Failed to load requests', style: TextStyle(fontSize: 24)),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: _loadRequests,
+                                  style: ElevatedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                                  ),
+                                  child: const Text('Retry', style: TextStyle(fontSize: 18)),
+                                ),
+                              ],
+                            ),
+                          )
+                        : _requests.isEmpty
+                            ? const Center(child: Text('No download requests yet.', style: TextStyle(fontSize: 24)))
+                            : LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final width = constraints.maxWidth;
+
+                                  final isVeryNarrow = width < 750;
+                                  final isNarrow = width < 1150;
+                                  final isMedium = width < 1450;
+
+                                  final double columnSpacing = isVeryNarrow ? 12.0 : isNarrow ? 16.0 : isMedium ? 30.0 : 48.0;
+                                  final double horizontalMargin = isVeryNarrow ? 8.0 : isNarrow ? 12.0 : isMedium ? 18.0 : 32.0;
+                                  final double headingHeight = isVeryNarrow ? 52.0 : isNarrow ? 64.0 : isMedium ? 76.0 : 88.0;
+                                  final double rowHeight = isVeryNarrow ? 66.0 : isNarrow ? 82.0 : isMedium ? 98.0 : 116.0;
+
+                                  final double headingFontSize = isVeryNarrow ? 13.5 : isNarrow ? 15.5 : isMedium ? 18.0 : 21.0;
+                                  final double bodyFontSize = isVeryNarrow ? 12.0 : isNarrow ? 13.5 : isMedium ? 15.0 : 16.5;
+
+                                  final double minTableWidth = isVeryNarrow ? 780.0 : isNarrow ? 1000.0 : isMedium ? 1220.0 : 1400.0;
+
+                                  return SingleChildScrollView(
+                                    scrollDirection: Axis.vertical,
+                                    child: Center(
+                                      child: ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                          minWidth: minTableWidth,
+                                          maxWidth: width,
+                                        ),
+                                        child: SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          child: DataTable(
+                                            columnSpacing: columnSpacing,
+                                            horizontalMargin: horizontalMargin,
+                                            headingRowHeight: headingHeight,
+                                            dataRowHeight: rowHeight,
+                                            headingTextStyle: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: headingFontSize,
+                                            ),
+                                            dataTextStyle: TextStyle(fontSize: bodyFontSize),
+                                            columns: [
+                                              DataColumn(
+                                                label: Checkbox(
+                                                  value: _selectAll,
+                                                  onChanged: _toggleSelectAll,
+                                                ),
+                                              ),
+                                              const DataColumn(label: Text('User Email')),
+                                              const DataColumn(label: Text('Models')),
+                                              const DataColumn(label: Text('Description')),
+                                              const DataColumn(label: Text('Status')),
+                                              const DataColumn(label: Text('Created At')),
+                                              const DataColumn(label: Text('Actions')),
+                                            ],
+                                            rows: _filteredRequests.map((req) {
+                                              final id = req['id'] as String;
+                                              final status = req['status'] as String? ?? 'pending';
+                                              final updated = DateTime.tryParse(req['updated_at'] ?? '') ?? DateTime.now();
+                                              final isSelected = _selectedIds.contains(id);
+
+                                              Color statusColor = status == 'processed'
+                                                  ? Colors.green[700]!
+                                                  : status == 'rejected'
+                                                      ? Colors.red[700]!
+                                                      : Colors.orange[800]!;
+
+                                              final modelNames = req['model_names'] as List<String>? ?? [];
+
+                                              return DataRow(
+                                                color: WidgetStateProperty.resolveWith<Color?>(
+                                                  (states) => isSelected ? Colors.blue.withOpacity(0.08) : null,
+                                                ),
+                                                cells: [
+                                                  DataCell(
+                                                    Checkbox(
+                                                      value: isSelected,
+                                                      onChanged: (v) => _toggleSelection(id, v),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Padding(
+                                                      padding: EdgeInsets.symmetric(vertical: isVeryNarrow ? 8 : 12),
+                                                      child: Text(
+                                                        req['email'] ?? 'Unknown',
+                                                        style: TextStyle(fontSize: isVeryNarrow ? 13.5 : isNarrow ? 15 : isMedium ? 16.5 : 18),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    modelNames.isEmpty
+                                                        ? const Text('—', style: TextStyle(fontSize: 16, color: Colors.grey))
+                                                        : modelNames.length <= 3
+                                                            ? Column(
+                                                                mainAxisSize: MainAxisSize.min,
+                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                children: modelNames.map((name) {
+                                                                  return Padding(
+                                                                    padding: EdgeInsets.symmetric(vertical: isVeryNarrow ? 2 : 4),
+                                                                    child: Text(
+                                                                      '• $name',
+                                                                      style: TextStyle(
+                                                                        fontSize: isVeryNarrow ? 13 : isNarrow ? 14.5 : isMedium ? 15.5 : 17,
+                                                                      ),
+                                                                      maxLines: 1,
+                                                                      overflow: TextOverflow.ellipsis,
+                                                                    ),
+                                                                  );
+                                                                }).toList(),
+                                                              )
+                                                            : Tooltip(
+                                                                message: modelNames.join('\n'),
+                                                                child: Text(
+                                                                  '${modelNames.length} models',
+                                                                  style: TextStyle(
+                                                                    fontSize: isVeryNarrow ? 13.5 : isNarrow ? 15 : isMedium ? 16 : 18,
+                                                                    fontStyle: FontStyle.italic,
+                                                                    color: Colors.blueGrey,
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                  ),
+                                                  DataCell(
+                                                    Padding(
+                                                      padding: EdgeInsets.symmetric(vertical: isVeryNarrow ? 6 : 10),
+                                                      child: Text(
+                                                        (req['description'] as String? ?? 'N/A').trim(),
+                                                        style: TextStyle(fontSize: isVeryNarrow ? 13 : isNarrow ? 14.5 : isMedium ? 15.5 : 17),
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Chip(
+                                                      label: Text(status.toUpperCase()),
+                                                      backgroundColor: statusColor,
+                                                      labelStyle: TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: isVeryNarrow ? 12 : isNarrow ? 13 : isMedium ? 14 : 15,
+                                                      ),
+                                                      padding: EdgeInsets.symmetric(
+                                                        horizontal: isVeryNarrow ? 10 : 12,
+                                                        vertical: isVeryNarrow ? 4 : 6,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                      DateFormat('dd/MM/yyyy HH:mm').format(updated),
+                                                      style: TextStyle(fontSize: isVeryNarrow ? 13.5 : isNarrow ? 15 : isMedium ? 16 : 18),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        if (status == 'pending') ...[
+                                                          IconButton(
+                                                            icon: SvgPicture.asset(
+                                                              'assets/icons/check_circle.svg',
+                                                              width: isVeryNarrow ? 32 : 36,
+                                                              height: isVeryNarrow ? 32 : 36,
+                                                              colorFilter: const ColorFilter.mode(Colors.green, BlendMode.srcIn),
+                                                            ),
+                                                            tooltip: 'Mark as Processed (sends download link)',
+                                                            onPressed: _processingRequests[id] == true
+                                                                ? null
+                                                                : () => _updateStatus(id, 'processed'),
+                                                          ),
+                                                          IconButton(
+                                                            icon: const Icon(Icons.cancel, color: Colors.red),
+                                                            iconSize: isVeryNarrow ? 32 : 36,
+                                                            tooltip: 'Reject with reason',
+                                                            onPressed: _processingRequests[id] == true
+                                                                ? null
+                                                                : () async {
+                                                                    final reasonController = TextEditingController();
+
+                                                                    final confirmed = await showDialog<bool>(
+                                                                      context: context,
+                                                                      builder: (dialogContext) => AlertDialog(
+                                                                        title: const Text('Reject Download Request'),
+                                                                        content: Column(
+                                                                          mainAxisSize: MainAxisSize.min,
+                                                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                                                          children: [
+                                                                            const Text(
+                                                                              'Please provide a reason for rejection:',
+                                                                              style: TextStyle(fontSize: 14),
+                                                                            ),
+                                                                            const SizedBox(height: 16),
+                                                                            TextField(
+                                                                              controller: reasonController,
+                                                                              decoration: const InputDecoration(
+                                                                                border: OutlineInputBorder(),
+                                                                                filled: true,
+                                                                              ),
+                                                                              minLines: 3,
+                                                                              maxLines: 5,
+                                                                              textCapitalization: TextCapitalization.sentences,
+                                                                            ),
+                                                                          ],
+                                                                        ),
+                                                                        actions: [
+                                                                          TextButton(
+                                                                            onPressed: () => Navigator.pop(dialogContext, false),
+                                                                            child: const Text('Cancel'),
+                                                                          ),
+                                                                          TextButton(
+                                                                            style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                                                            onPressed: () {
+                                                                              Navigator.pop(dialogContext, true);
+                                                                            },
+                                                                            child: const Text('Reject'),
+                                                                          ),
+                                                                        ],
+                                                                      ),
+                                                                    );
+
+                                                                    if (confirmed != true || !mounted) return;
+
+                                                                    final rejectReason = reasonController.text.trim();
+                                                                    await _updateStatus(id, 'rejected', rejectReason: rejectReason);
+                                                                  },
+                                                          ),
+                                                        ],
+                                                        if (status == 'processed' || status == 'rejected')
+                                                          IconButton(
+                                                            icon: SvgPicture.asset(
+                                                              'assets/icons/delete.svg',
+                                                              width: isVeryNarrow ? 32 : 36,
+                                                              height: isVeryNarrow ? 32 : 36,
+                                                              colorFilter: const ColorFilter.mode(Colors.red, BlendMode.srcIn),
+                                                            ),
+                                                            tooltip: 'Delete this request',
+                                                            onPressed: _processingRequests[id] == true
+                                                                ? null
+                                                                : () async {
+                                                                    final confirmed = await showDialog<bool>(
+                                                                      context: context,
+                                                                      builder: (ctx) => AlertDialog(
+                                                                        title: const Text('Delete Request'),
+                                                                        content: const Text('Are you sure you want to delete this request? This cannot be undone.'),
+                                                                        actions: [
+                                                                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                                                          TextButton(
+                                                                            style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                                                            onPressed: () => Navigator.pop(ctx, true),
+                                                                            child: const Text('Delete'),
+                                                                          ),
+                                                                        ],
+                                                                      ),
+                                                                    );
+                                                                    if (confirmed != true) return;
+
+                                                                    try {
+                                                                      await Supabase.instance.client
+                                                                          .from('download_requests')
+                                                                          .delete()
+                                                                          .eq('id', id);
+
+                                                                      setState(() {
+                                                                        _requests.removeWhere((r) => r['id'] == id);
+                                                                        _selectedIds.remove(id);
+                                                                      });
+
+                                                                      if (mounted) {
+                                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                                          const SnackBar(
+                                                                            content: Text('Request deleted successfully'),
+                                                                            backgroundColor: AppTheme.hkmuGreen,
+                                                                          ),
+                                                                        );
+                                                                      }
+                                                                    } catch (e) {
+                                                                      if (mounted) {
+                                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                                          const SnackBar(
+                                                                            content: Text('Failed to delete request'),
+                                                                            backgroundColor: Colors.red,
+                                                                          ),
+                                                                        );
+                                                                      }
+                                                                    }
+                                                                  },
+                                                          ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            }).toList(),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
               ),
             ],
           ),
 
-          if (_selectedIds.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Row(
-                children: [
-                  Text(
-                    '${_selectedIds.length} selected',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          if (_processingRequests.isNotEmpty)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withOpacity(0.30),
+                child: const Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.hkmuGreen),
+                    strokeWidth: 5,
                   ),
-                  const SizedBox(width: 32),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.delete_forever, size: 24),
-                    label: const Text('Delete Selected', style: TextStyle(fontSize: 18)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    ),
-                    onPressed: _batchDeleteProcessedOrRejected,
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      _selectedIds.clear();
-                      _selectAll = false;
-                    }),
-                    child: const Text('Clear selection', style: TextStyle(fontSize: 16)),
-                  ),
-                ],
+                ),
               ),
             ),
-
-          const SizedBox(height: 40),
-
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _hasError
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.error_outline, size: 100, color: Colors.red),
-                            const SizedBox(height: 32),
-                            const Text('Failed to load requests', style: TextStyle(fontSize: 24)),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: _loadRequests,
-                              style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                              ),
-                              child: const Text('Retry', style: TextStyle(fontSize: 18)),
-                            ),
-                          ],
-                        ),
-                      )
-                    : _requests.isEmpty
-                        ? const Center(child: Text('No download requests yet.', style: TextStyle(fontSize: 24)))
-                        : SingleChildScrollView(
-                            scrollDirection: Axis.vertical,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: DataTable(
-                                columnSpacing: 40,
-                                headingRowHeight: 80,
-                                // ignore: deprecated_member_use
-                                dataRowHeight: 100,
-                                headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-                                dataTextStyle: const TextStyle(fontSize: 14),
-                                columns: [
-                                  DataColumn(
-                                    label: Checkbox(
-                                      value: _selectAll,
-                                      onChanged: _toggleSelectAll,
-                                    ),
-                                  ),
-                                  const DataColumn(label: Text('User Email')),
-                                  const DataColumn(label: Text('Models')),
-                                  const DataColumn(label: Text('Status')),                                  
-                                  const DataColumn(label: Text('Created At')),
-                                  const DataColumn(label: Text('Actions')),
-                                ],
-                                rows: _filteredRequests.map((req) {
-                                  final id = req['id'] as String;
-                                  final status = req['status'] as String? ?? 'pending';
-                                  final updated = DateTime.tryParse(req['updated_at'] ?? '') ?? DateTime.now();
-                                  final isSelected = _selectedIds.contains(id);
-
-                                  Color statusColor;
-                                  if (status == 'processed') {
-                                    statusColor = Colors.green[700]!;
-                                  } else if (status == 'rejected') {
-                                    statusColor = Colors.red[700]!;
-                                  } else {
-                                    statusColor = Colors.orange[800]!;
-                                  }
-
-                                  final modelNames = req['model_names'] as List<String>? ?? [];
-
-                                  return DataRow(
-                                    color: WidgetStateProperty.resolveWith<Color?>(
-                                      (states) => isSelected ? Colors.blue.withValues(alpha: 0.08) : null,
-                                    ),
-                                    cells: [
-                                      DataCell(
-                                        Checkbox(
-                                          value: isSelected,
-                                          onChanged: (v) => _toggleSelection(id, v),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 12),
-                                          child: Text(req['email'] ?? 'Unknown', style: const TextStyle(fontSize: 18)),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        modelNames.isEmpty
-                                            ? const Text('—', style: TextStyle(fontSize: 18, color: Colors.grey))
-                                            : modelNames.length <= 3
-                                                ? Column(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: modelNames.map((name) {
-                                                      return Padding(
-                                                        padding: const EdgeInsets.symmetric(vertical: 2),
-                                                        child: Text(
-                                                          '• $name',
-                                                          style: const TextStyle(fontSize: 16.5),
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow.ellipsis,
-                                                        ),
-                                                      );
-                                                    }).toList(),
-                                                  )
-                                                : Tooltip(
-                                                    message: modelNames.join('\n'),
-                                                    child: Text(
-                                                      '${modelNames.length} models',
-                                                      style: const TextStyle(
-                                                        fontSize: 17,
-                                                        fontStyle: FontStyle.italic,
-                                                        color: Colors.blueGrey,
-                                                      ),
-                                                    ),
-                                                  ),
-                                      ),
-                                      DataCell(
-                                        Chip(
-                                          label: Text(status.toUpperCase()),
-                                          backgroundColor: statusColor,
-                                          labelStyle: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                        ),
-                                      ),
-                                      DataCell(Text(DateFormat('dd/MM/yyyy HH:mm').format(updated), style: const TextStyle(fontSize: 18))),
-                                      DataCell(
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            if (status == 'pending') ...[
-                                              IconButton(
-                                                icon: SvgPicture.asset(
-                                                  'assets/icons/check_circle.svg',
-                                                  width: 36,
-                                                  height: 36,
-                                                  colorFilter: const ColorFilter.mode(Colors.green, BlendMode.srcIn),
-                                                ),
-                                                tooltip: 'Mark as Processed (downloads ZIP)',
-                                                onPressed: () => _updateStatus(id, 'processed'),
-                                              ),
-                                              IconButton(
-                                                icon: const Icon(Icons.cancel, color: Colors.red, size: 36),
-                                                tooltip: 'Reject',
-                                                onPressed: () => _updateStatus(id, 'rejected'),
-                                              ),
-                                            ],
-                                            if (status == 'processed' || status == 'rejected')
-                                              IconButton(
-                                                icon: SvgPicture.asset(
-                                                  'assets/icons/delete.svg',
-                                                  width: 36,
-                                                  height: 36,
-                                                  colorFilter: const ColorFilter.mode(Colors.red, BlendMode.srcIn),
-                                                ),
-                                                tooltip: 'Delete this request',
-                                                onPressed: () async {
-                                                  final confirmed = await showDialog<bool>(
-                                                    context: context,
-                                                    builder: (ctx) => AlertDialog(
-                                                      title: const Text('Delete Request'),
-                                                      content: const Text('Are you sure you want to delete this request? This cannot be undone.'),
-                                                      actions: [
-                                                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                                        TextButton(
-                                                          style: TextButton.styleFrom(foregroundColor: Colors.red),
-                                                          onPressed: () => Navigator.pop(ctx, true),
-                                                          child: const Text('Delete'),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  );
-                                                  if (confirmed != true) return;
-
-                                                  try {
-                                                    await Supabase.instance.client
-                                                        .from('download_requests')
-                                                        .delete()
-                                                        .eq('id', id);
-
-                                                    setState(() {
-                                                      _requests.removeWhere((r) => r['id'] == id);
-                                                      _selectedIds.remove(id);
-                                                    });
-
-                                                    if (mounted) {
-                                                      // ignore: use_build_context_synchronously
-                                                      ScaffoldMessenger.of(context).showSnackBar(
-                                                        const SnackBar(
-                                                          content: Text('Request deleted successfully'),
-                                                          backgroundColor: AppTheme.hkmuGreen,
-                                                        ),
-                                                      );
-                                                    }
-                                                  } catch (e) {
-                                                    if (mounted) {
-                                                      // ignore: use_build_context_synchronously
-                                                      ScaffoldMessenger.of(context).showSnackBar(
-                                                        const SnackBar(
-                                                          content: Text('Failed to delete request'),
-                                                          backgroundColor: Colors.red,
-                                                        ),
-                                                      );
-                                                    }
-                                                  }
-                                                },
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                          ),
-          ),
         ],
       ),
     );

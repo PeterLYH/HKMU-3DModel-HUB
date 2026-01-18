@@ -1,5 +1,3 @@
-// lib/screens/home_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -23,8 +21,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _models = [];
 
   String _searchTerm = '';
-  String _selectedCategory = 'All'; // initial preferred value
-  List<String> _categories = ['All']; // raw list from DB + 'All'
+  String _selectedCategory = 'All';
+  List<String> _categories = ['All'];
 
   @override
   void initState() {
@@ -37,29 +35,29 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final response = await Supabase.instance.client
           .from('models')
-          .select('category')
-          .not('category', 'is', null);
+          .select('categories')
+          .not('categories', 'is', null);
 
-      final uniqueCategories = response
-          .map((e) => e['category'] as String)
+      final allCats = response
+          .expand((e) => (e['categories'] as List<dynamic>?) ?? [])
+          .whereType<String>()
           .toSet()
-          .toList();
+          .toList()
+        ..sort();
 
       setState(() {
-        _categories = ['All', ...uniqueCategories];
+        _categories = ['All', ...allCats];
       });
     } catch (e) {
       debugPrint('Error fetching categories: $e');
     }
   }
 
-  // Helper: returns the list for dropdown with selected item first
   List<String> get _displayCategories {
     if (_selectedCategory == 'All' || !_categories.contains(_selectedCategory)) {
-      return List.from(_categories); // keep original order when All is selected
+      return List.from(_categories);
     }
 
-    // Move selected to front, keep All in second position
     final list = List<String>.from(_categories);
     list.remove(_selectedCategory);
     return [_selectedCategory, 'All', ...list.where((c) => c != 'All' && c != _selectedCategory)];
@@ -81,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (_selectedCategory != 'All') {
-        query = query.eq('category', _selectedCategory);
+        query = query.contains('categories', _selectedCategory);
       }
 
       final response = await query
@@ -97,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (_selectedCategory != 'All') {
-        countQuery = countQuery.eq('category', _selectedCategory);
+        countQuery = countQuery.contains('categories', _selectedCategory);
       }
 
       final count = await countQuery;
@@ -163,23 +161,23 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void showModelDetailDialog(BuildContext context, String modelId) {
-  showDialog(
-    context: context,
-    builder: (dialogContext) {
-      return Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: 900,
-            maxHeight: 780, // adjust based on your preference
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 1400,
+              maxHeight: 900,
+            ),
+            child: ModelDetailContent(modelId: modelId),
           ),
-          child: ModelDetailContent(modelId: modelId),
-        ),
-      );
-    },
-  );
-}
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -215,7 +213,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 40),
 
-            // Search + Filter row
             Row(
               children: [
                 Expanded(
@@ -253,7 +250,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 SizedBox(
                   width: 240,
                   child: DropdownButtonFormField<String>(
-                    initialValue: _selectedCategory,
+                    value: _selectedCategory,
                     decoration: InputDecoration(
                       labelText: 'Category',
                       prefixIcon: const Icon(Icons.filter_list),
@@ -458,10 +455,13 @@ class _HomeScreenState extends State<HomeScreen> {
       itemBuilder: (context, index) {
         final model = _models[index];
         final thumbnailUrl = getThumbnailUrl(model['thumbnail_path']);
+        final cats = (model['categories'] as List<dynamic>?)?.cast<String>() ?? [];
+        final displayCat = cats.isEmpty ? 'Other' : cats.join(', ');
 
         return InkWell(
           onTap: () {
-          showModelDetailDialog(context, model['id'] as String);},
+            showModelDetailDialog(context, model['id'] as String);
+          },
           borderRadius: BorderRadius.circular(16),
           child: Card(
             elevation: 6,
@@ -503,11 +503,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        model['category'] ?? 'Other',
+                        displayCat,
                         style: TextStyle(
                           color: theme.colorScheme.onSurfaceVariant,
                           fontSize: 14,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -518,6 +520,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                      const SizedBox(height: 12),
                     ],
                   ),
                 ),

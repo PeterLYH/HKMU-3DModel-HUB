@@ -140,7 +140,9 @@ class CartProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<Map<String, dynamic>> submitDownloadRequest() async {
+  Future<Map<String, dynamic>> submitDownloadRequest({
+    String? description,
+  }) async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
       return {'success': false, 'message': 'Please login first'};
@@ -158,15 +160,22 @@ class CartProvider extends ChangeNotifier {
         'email': user.email ?? 'unknown',
         'model_ids': _cartModelIds,
         'status': 'pending',
+        'description': description,                    // ← added
         'created_at': DateTime.now().toIso8601String(),
       });
 
       await clearCart();
 
-      return {'success': true, 'message': 'Request submitted successfully!'};
+      return {
+        'success': true,
+        'message': 'Request submitted successfully!',
+      };
     } catch (e) {
       debugPrint('Request failed: $e');
-      return {'success': false, 'message': 'Failed to submit request'};
+      return {
+        'success': false,
+        'message': 'Failed to submit request: ${e.toString()}',
+      };
     } finally {
       _isLoading = false;
       notifyListeners();
