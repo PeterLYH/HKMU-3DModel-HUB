@@ -1,7 +1,6 @@
 // lib/screens/cart_screen.dart
 
 // ignore_for_file: use_build_context_synchronously
-
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:go_router/go_router.dart';
@@ -102,7 +101,7 @@ class _CartScreenState extends State<CartScreen> {
     setState(() {
       _modelsFuture = Supabase.instance.client
           .from('models')
-          .select('id, name, thumbnail_path, category, file_type')
+          .select('id, name, thumbnail_path, categories, file_type')
           .inFilter('id', cartProvider.cartModelIds)
           .order('created_at', ascending: false);
     });
@@ -168,7 +167,7 @@ class _CartScreenState extends State<CartScreen> {
     BuildContext context,
     CartProvider cartProvider,
     ThemeData theme,
-    List<Map<String, dynamic>> models, // ← pass models here
+    List<Map<String, dynamic>> models,
   ) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -189,7 +188,7 @@ class _CartScreenState extends State<CartScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'Description',
+            'Request Reason',
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
             ),
@@ -201,7 +200,7 @@ class _CartScreenState extends State<CartScreen> {
             minLines: 3,
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
-              hintText: 'What are you planning to use these models for? ',
+              hintText: 'Reason for requesting these models...',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -291,7 +290,7 @@ class _CartScreenState extends State<CartScreen> {
                     },
               icon: const Icon(Icons.send),
               label: const Text(
-                'Submit Download Request',
+                'Submit Request',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
@@ -408,7 +407,7 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${model['category'] ?? '—'} • ${model['file_type'] ?? '—'}',
+                    '${model['categories'] ?? '—'} • ${model['file_type'] ?? '—'}',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
                     ),

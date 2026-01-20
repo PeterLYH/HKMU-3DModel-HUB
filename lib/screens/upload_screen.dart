@@ -1,5 +1,7 @@
 // upload_screen.dart
 
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:go_router/go_router.dart';
@@ -572,8 +574,11 @@ class _UploadScreenState extends State<UploadScreen> {
                               selected: isSelected,
                               onSelected: (selected) {
                                 setState(() {
-                                  if (selected) _selectedCategories.add(category);
-                                  else _selectedCategories.remove(category);
+                                  if (selected) {
+                                    _selectedCategories.add(category);
+                                  } else {
+                                    _selectedCategories.remove(category);
+                                  }
                                 });
                               },
                               selectedColor: AppTheme.hkmuGreen.withOpacity(0.25),
@@ -849,7 +854,7 @@ class _UploadScreenState extends State<UploadScreen> {
                       else
                         ElevatedButton.icon(
                           onPressed: _isUploading ? null : _pickMultipleModels,
-                          icon: const Icon(Icons.folder_copy),
+                          icon: const Icon(Icons.folder_open),
                           label: const Text(
                             'Choose Multiple 3D Models',
                             style: TextStyle(fontSize: 18),

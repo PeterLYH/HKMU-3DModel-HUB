@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/widgets/header.dart';
 import '../styles/styles.dart';
-import '../widgets/model_detail_content.dart';
+import 'model_detail_content.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -161,19 +161,46 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void showModelDetailDialog(BuildContext context, String modelId) {
-    showDialog(
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    final bool isSmallScreen = screenWidth < 700;
+
+    showGeneralDialog(
       context: context,
-      builder: (dialogContext) {
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black.withOpacity(0.5),
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation, secondaryAnimation) {
         return Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          insetPadding: isSmallScreen
+              ? const EdgeInsets.symmetric(horizontal: 16, vertical: 32)  // margin on mobile
+              : EdgeInsets.symmetric(
+                  horizontal: screenWidth > 1200 ? 120 : 32,
+                  vertical: 24,
+                ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(isSmallScreen ? 16 : 20),
+          ),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 1400,
-              maxHeight: 900,
-            ),
+            constraints: isSmallScreen
+                ? BoxConstraints(
+                    maxWidth: screenWidth - 32,
+                    maxHeight: screenHeight - 64,
+                  )
+                : const BoxConstraints(
+                    maxWidth: 1400,
+                    maxHeight: 900,
+                  ),
             child: ModelDetailContent(modelId: modelId),
           ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return FadeTransition(
+          opacity: animation,
+          child: ScaleTransition(scale: animation, child: child),
         );
       },
     );
@@ -185,6 +212,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isMobile = screenWidth < 600;
+
     int crossAxisCount = 4;
     if (screenWidth < 1200) crossAxisCount = 3;
     if (screenWidth < 900) crossAxisCount = 2;
@@ -193,13 +222,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: const Header(),
       body: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: EdgeInsets.all(isMobile ? 16.0 : 24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Welcome to the 3D Model Hub',
-              style: theme.textTheme.headlineMedium?.copyWith(
+              style: (isMobile
+                      ? theme.textTheme.headlineSmall
+                      : theme.textTheme.headlineMedium)
+                  ?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: AppTheme.hkmuGreen,
               ),
@@ -207,88 +239,35 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 8),
             Text(
               'Browse, view, and share high-quality 3D models created by the HKMU community.',
-              style: theme.textTheme.bodyLarge?.copyWith(
+              style: (isMobile
+                      ? theme.textTheme.bodyMedium
+                      : theme.textTheme.bodyLarge)
+                  ?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 40),
+            SizedBox(height: isMobile ? 24 : 40),
 
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    onChanged: _onSearchChanged,
-                    style: TextStyle(color: theme.colorScheme.onSurface),
-                    decoration: InputDecoration(
-                      hintText: 'Search by name...',
-                      prefixIcon: Icon(
-                        Icons.search,
-                        color: theme.colorScheme.onSurfaceVariant,
+            // Search + Filter - stacked on mobile
+            isMobile
+                ? Column(
+                    children: [
+                      _buildSearchField(theme, isDark),
+                      const SizedBox(height: 16),
+                      _buildCategoryDropdown(theme, isDark),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(child: _buildSearchField(theme, isDark)),
+                      const SizedBox(width: 16),
+                      SizedBox(
+                        width: 240,
+                        child: _buildCategoryDropdown(theme, isDark),
                       ),
-                      hintStyle: TextStyle(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                      filled: true,
-                      fillColor: isDark
-                          ? theme.colorScheme.surfaceContainerHighest
-                          : theme.colorScheme.surfaceContainerLowest,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(
-                          color: AppTheme.hkmuGreen,
-                          width: 2,
-                        ),
-                      ),
-                    ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 16),
-                SizedBox(
-                  width: 240,
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedCategory,
-                    decoration: InputDecoration(
-                      labelText: 'Category',
-                      prefixIcon: const Icon(Icons.filter_list),
-                      filled: true,
-                      fillColor: isDark
-                          ? theme.colorScheme.surfaceContainerHighest
-                          : theme.colorScheme.surfaceContainerLowest,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(
-                          color: AppTheme.hkmuGreen,
-                          width: 2,
-                        ),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
-                    items: _displayCategories.map((String category) {
-                      return DropdownMenuItem<String>(
-                        value: category,
-                        child: Text(category),
-                      );
-                    }).toList(),
-                    onChanged: _onCategoryChanged,
-                    isExpanded: true,
-                    style: TextStyle(color: theme.colorScheme.onSurface),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
+            SizedBox(height: isMobile ? 20 : 20),
 
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -314,7 +293,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             if (_totalPages > 1)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
+                padding: const EdgeInsets.symmetric(vertical: 20),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -326,6 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: _currentPage > 1
                           ? AppTheme.hkmuGreen
                           : theme.colorScheme.onSurfaceVariant,
+                      iconSize: isMobile ? 28 : 32,
                     ),
                     ...List.generate(
                       _totalPages,
@@ -342,13 +322,16 @@ class _HomeScreenState extends State<HomeScreen> {
                             foregroundColor: _currentPage == (index + 1)
                                 ? Colors.black
                                 : theme.colorScheme.onSurface,
-                            minimumSize: const Size(40, 40),
+                            minimumSize: Size(isMobile ? 36 : 40, isMobile ? 36 : 40),
                             padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: Text('${index + 1}'),
+                          child: Text(
+                            '${index + 1}',
+                            style: TextStyle(fontSize: isMobile ? 14 : 16),
+                          ),
                         ),
                       ),
                     ),
@@ -360,6 +343,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: _currentPage < _totalPages
                           ? AppTheme.hkmuGreen
                           : theme.colorScheme.onSurfaceVariant,
+                      iconSize: isMobile ? 28 : 32,
                     ),
                   ],
                 ),
@@ -382,10 +366,76 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => context.go('/upload'),
             backgroundColor: AppTheme.hkmuGreen,
             icon: const Icon(Icons.upload),
-            label: const Text('Upload Model'),
+            label: Text(
+              isMobile ? 'Upload' : 'Upload Model',
+              style: TextStyle(fontSize: isMobile ? 14 : 16),
+            ),
+            heroTag: 'upload_fab',
           );
         },
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+    );
+  }
+
+  Widget _buildSearchField(ThemeData theme, bool isDark) {
+    return TextField(
+      onChanged: _onSearchChanged,
+      style: TextStyle(color: theme.colorScheme.onSurface),
+      decoration: InputDecoration(
+        hintText: 'Search by name...',
+        prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurfaceVariant),
+        hintStyle: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+        filled: true,
+        fillColor: isDark
+            ? theme.colorScheme.surfaceContainerHighest
+            : theme.colorScheme.surfaceContainerLowest,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: AppTheme.hkmuGreen, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+    );
+  }
+
+  Widget _buildCategoryDropdown(ThemeData theme, bool isDark) {
+    return DropdownButtonFormField<String>(
+      value: _selectedCategory,
+      decoration: InputDecoration(
+        labelText: 'Category',
+        prefixIcon: const Icon(Icons.filter_list),
+        filled: true,
+        fillColor: isDark
+            ? theme.colorScheme.surfaceContainerHighest
+            : theme.colorScheme.surfaceContainerLowest,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: AppTheme.hkmuGreen, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+      items: _displayCategories.map((String category) {
+        return DropdownMenuItem<String>(
+          value: category,
+          child: Text(category),
+        );
+      }).toList(),
+      onChanged: _onCategoryChanged,
+      isExpanded: true,
+      style: TextStyle(color: theme.colorScheme.onSurface),
     );
   }
 
@@ -396,9 +446,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return GridView.builder(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
-          mainAxisSpacing: 20,
-          crossAxisSpacing: 20,
-          childAspectRatio: 0.85,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 16,
+          childAspectRatio: 0.75,
         ),
         itemCount: 12,
         itemBuilder: (context, index) => Card(
@@ -415,31 +465,39 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (_models.isEmpty && _currentPage == 1) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.view_in_ar_outlined,
-              size: 100,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              _searchTerm.trim().isEmpty && _selectedCategory == 'All'
-                  ? 'No models uploaded yet'
-                  : 'No models found',
-              style: theme.textTheme.headlineSmall?.copyWith(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.view_in_ar_outlined,
+                size: 80,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _searchTerm.trim().isEmpty && _selectedCategory == 'All'
-                  ? 'Be the first to upload!'
-                  : 'Try adjusting your search or filter',
-              style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-            ),
-          ],
+              const SizedBox(height: 24),
+              Text(
+                _searchTerm.trim().isEmpty && _selectedCategory == 'All'
+                    ? 'No models uploaded yet'
+                    : 'No models found',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _searchTerm.trim().isEmpty && _selectedCategory == 'All'
+                    ? 'Be the first to upload!'
+                    : 'Try adjusting your search or filter',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -447,9 +505,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return GridView.builder(
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
-        mainAxisSpacing: 20,
-        crossAxisSpacing: 20,
-        childAspectRatio: 0.85,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 16,
+        childAspectRatio: 0.75,
       ),
       itemCount: _models.length,
       itemBuilder: (context, index) {
@@ -459,12 +517,10 @@ class _HomeScreenState extends State<HomeScreen> {
         final displayCat = cats.isEmpty ? 'Other' : cats.join(', ');
 
         return InkWell(
-          onTap: () {
-            showModelDetailDialog(context, model['id'] as String);
-          },
+          onTap: () => showModelDetailDialog(context, model['id'] as String),
           borderRadius: BorderRadius.circular(16),
           child: Card(
-            elevation: 6,
+            elevation: 4,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             clipBehavior: Clip.antiAlias,
             child: Column(
@@ -520,7 +576,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 12),
                     ],
                   ),
                 ),

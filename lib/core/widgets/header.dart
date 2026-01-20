@@ -1,7 +1,6 @@
-//lib/core/widgets/header.dart
+// lib/core/widgets/header.dart
 
 // ignore_for_file: use_build_context_synchronously
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -129,10 +128,7 @@ class _HeaderState extends State<Header> {
                   ),
                   if (errorMessage != null) ...[
                     const SizedBox(height: 12),
-                    Text(
-                      errorMessage!,
-                      style: const TextStyle(color: Colors.red),
-                    ),
+                    Text(errorMessage!, style: const TextStyle(color: Colors.red)),
                   ],
                 ],
               ),
@@ -151,20 +147,17 @@ class _HeaderState extends State<Header> {
                       setDialogState(() => errorMessage = 'All fields are required');
                       return;
                     }
-
                     if (newPass != confirm) {
                       setDialogState(() => errorMessage = 'Passwords do not match');
                       return;
                     }
-
                     if (newPass.length < 6) {
                       setDialogState(() => errorMessage = 'Password too short');
                       return;
                     }
 
                     try {
-                      final response = await Supabase.instance.client
-                          .rpc('change_password', params: {
+                      final response = await Supabase.instance.client.rpc('change_password', params: {
                         'current_plain_password': old,
                         'new_plain_password': newPass,
                       });
@@ -172,10 +165,7 @@ class _HeaderState extends State<Header> {
                       if (response == 'success') {
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Password changed successfully'),
-                            backgroundColor: Colors.green,
-                          ),
+                          const SnackBar(content: Text('Password changed successfully'), backgroundColor: Colors.green),
                         );
                       } else if (response == 'incorrect') {
                         setDialogState(() => errorMessage = 'Current password is incorrect');
@@ -209,6 +199,8 @@ class _HeaderState extends State<Header> {
     final bool showCart = isLoggedIn && !isAdmin;
 
     final displayName = _currentUser?.email ?? 'User';
+    final screenWidth = MediaQuery.of(context).size.width;
+    final bool isNarrow = screenWidth < 500;
 
     return AppBar(
       automaticallyImplyLeading: false,
@@ -217,114 +209,198 @@ class _HeaderState extends State<Header> {
       foregroundColor: Colors.white,
       elevation: 0,
       titleSpacing: 0,
-      title: Row(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 16.0),
-            child: TextButton(
-              onPressed: () => context.go('/'),
-              style: TextButton.styleFrom(
-                padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text(
-                'HKMU 3D Model Hub',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
+      centerTitle: false,
+      title: Padding(
+        padding: const EdgeInsets.only(left: 1.0),
+        child: TextButton(
+          onPressed: () => context.go('/'),
+          style: TextButton.styleFrom(
+            padding: EdgeInsets.zero,
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            foregroundColor: Colors.white,
           ),
-          const Spacer(),
-          if (isAdmin)
-            TextButton(
-              onPressed: () => context.go('/admin'),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SvgPicture.asset(
-                    'assets/icons/admin_panel_settings.svg',
-                    width: 22,
-                    height: 22,
-                    colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Admin Panel',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
+          child: const Text(
+            'HKMU 3D Model Hub',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
             ),
-          if (showCart) ...[
-            const SizedBox(width: 24),
-            Stack(
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
+        ),
+      ),
+      actions: [
+        if (showCart)
+          Padding(
+            padding: const EdgeInsets.only(right: 4.0),
+            child: Stack(
               children: [
                 IconButton(
                   icon: SvgPicture.asset(
                     'assets/icons/shopping_cart.svg',
-                    width: 28,
-                    height: 28,
+                    width: 24,
+                    height: 24,
                     colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
                   ),
                   onPressed: () => context.go('/cart'),
                 ),
                 if (cartProvider.itemCount > 0)
                   Positioned(
-                    right: 8,
-                    top: 8,
+                    right: 6,
+                    top: 6,
                     child: Container(
                       padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
+                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
                       child: Text(
                         '${cartProvider.itemCount}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
               ],
             ),
-          ],
-          const SizedBox(width: 16),
-          if (!isLoggedIn)
-            OutlinedButton(
-              onPressed: () => context.go('/login'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Colors.white),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+
+        if (isNarrow)
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onSelected: (value) async {
+              switch (value) {
+                case 'admin':
+                  context.go('/admin');
+                  break;
+                case 'theme':
+                  MyApp.toggleTheme(context, isDark ? ThemeMode.light : ThemeMode.dark);
+                  break;
+                case 'change_password':
+                  await _handleChangePassword();
+                  break;
+                case 'logout':
+                  await Supabase.instance.client.auth.signOut();
+                  final cart = Provider.of<CartProvider>(context, listen: false);
+                  cart.clearCart();
+                  if (!mounted) return;
+                  context.go('/');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Logged out successfully'), backgroundColor: AppTheme.hkmuGreen),
+                  );
+                  break;
+                case 'login':
+                  context.go('/login');
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'theme',
+                child: ListTile(
+                  leading: Icon(isDark ? Icons.dark_mode : Icons.light_mode),
+                  title: Text(isDark ? 'Light Mode' : 'Dark Mode'),
+                ),
               ),
-              child: const Text('Login', style: TextStyle(fontWeight: FontWeight.bold)),
-            )
-          else
+
+              if (!isLoggedIn)
+                PopupMenuItem(
+                  value: 'login',
+                  child: ListTile(
+                    leading: SvgPicture.asset(
+                      'assets/icons/login.svg',
+                      width: 24,
+                      height: 24,
+                      colorFilter: ColorFilter.mode(
+                        isDark ? Colors.white : Colors.black87,
+                        BlendMode.srcIn,
+                      ),
+                    ),
+                    title: const Text('Login'),
+                  ),
+                ),
+
+              if (isLoggedIn) ...[
+                if (isAdmin)
+                  PopupMenuItem(
+                    value: 'admin',
+                    child: ListTile(
+                      leading: SvgPicture.asset(
+                        'assets/icons/admin_panel_settings.svg',
+                        width: 24,
+                        height: 24,
+                        colorFilter: ColorFilter.mode(
+                          isDark ? Colors.white : Colors.black87,
+                          BlendMode.srcIn,
+                        ),
+                      ),
+                      title: const Text('Admin Panel'),
+                    ),
+                  ),
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  enabled: false,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'logout',
+                  child: ListTile(
+                    leading: SvgPicture.asset(
+                      'assets/icons/logout.svg',
+                      width: 24,
+                      colorFilter: ColorFilter.mode(
+                        isDark ? Colors.white : Colors.black87,
+                        BlendMode.srcIn,
+                      ),
+                    ),
+                    title: const Text('Logout'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'change_password',
+                  child: ListTile(
+                    leading: SvgPicture.asset(
+                      'assets/icons/password.svg',
+                      width: 24,
+                      colorFilter: ColorFilter.mode(
+                        isDark ? Colors.white : Colors.black87,
+                        BlendMode.srcIn,
+                      ),
+                    ),
+                    title: const Text('Change Password'),
+                  ),
+                ),
+              ],
+            ],
+          )
+        else ...[
+          if (isAdmin)
+            TextButton.icon(
+              onPressed: () => context.go('/admin'),
+              icon: SvgPicture.asset(
+                'assets/icons/admin_panel_settings.svg',
+                width: 22,
+                colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+              ),
+              label: const Text('Admin Panel', style: TextStyle(color: Colors.white)),
+            ),
+          IconButton(
+            icon: Icon(isDark ? Icons.dark_mode : Icons.light_mode, color: Colors.white),
+            tooltip: isDark ? 'Light Mode' : 'Dark Mode',
+            onPressed: () => MyApp.toggleTheme(context, isDark ? ThemeMode.light : ThemeMode.dark),
+          ),
+          if (isLoggedIn)
             PopupMenuButton<String>(
               offset: const Offset(0, 50),
               icon: CircleAvatar(
-                radius: 16,
+                radius: 15,
                 backgroundColor: Colors.white,
                 child: Text(
                   displayName[0].toUpperCase(),
-                  style: TextStyle(
-                    color: AppTheme.hkmuGreen,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
+                  style: TextStyle(color: AppTheme.hkmuGreen, fontWeight: FontWeight.bold, fontSize: 15),
                 ),
               ),
               onSelected: (value) async {
@@ -337,76 +413,52 @@ class _HeaderState extends State<Header> {
                   if (!mounted) return;
                   context.go('/');
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Logged out successfully'),
-                      backgroundColor: AppTheme.hkmuGreen,
-                    ),
+                    const SnackBar(content: Text('Logged out successfully'), backgroundColor: AppTheme.hkmuGreen),
                   );
                 }
               },
               itemBuilder: (context) => [
-                PopupMenuItem(
-                  enabled: false,
-                  child: Text(
-                    displayName,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
+                PopupMenuItem(enabled: false, child: Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold))),
                 const PopupMenuDivider(),
                 PopupMenuItem(
                   value: 'change_password',
-                  child: Row(
-                    children: [
-                      SvgPicture.asset(
-                        'assets/icons/password.svg',
-                        width: 20,
-                        height: 20,
-                        colorFilter: ColorFilter.mode(
-                          isDark ? Colors.white : Colors.black87,
-                          BlendMode.srcIn,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text('Change Password'),
-                    ],
+                  child: ListTile(
+                    leading: SvgPicture.asset('assets/icons/password.svg', width: 20),
+                    title: const Text('Change Password'),
                   ),
                 ),
                 PopupMenuItem(
                   value: 'logout',
-                  child: Row(
-                    children: [
-                      SvgPicture.asset(
-                        'assets/icons/logout.svg',
-                        width: 20,
-                        height: 20,
-                        colorFilter: ColorFilter.mode(
-                          isDark ? Colors.white : Colors.black87,
-                          BlendMode.srcIn,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text('Logout'),
-                    ],
+                  child: ListTile(
+                    leading: SvgPicture.asset('assets/icons/logout.svg', width: 20),
+                    title: const Text('Logout'),
                   ),
                 ),
               ],
-            ),
-          const SizedBox(width: 16),
-          IconButton(
-            icon: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              transitionBuilder: (child, animation) => RotationTransition(turns: animation, child: child),
-              child: Icon(
-                isDark ? Icons.dark_mode : Icons.light_mode,
-                key: ValueKey(isDark),
-                color: Colors.white,
+            )
+          else
+            TextButton.icon(
+              onPressed: () => context.go('/login'),
+              icon: SvgPicture.asset(
+                'assets/icons/login.svg',
+                width: 20,
+                height: 20,
+                colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+              ),
+              label: const Text(
+                'Login',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                foregroundColor: Colors.white,
               ),
             ),
-            onPressed: () => MyApp.toggleTheme(context, isDark ? ThemeMode.light : ThemeMode.dark),
-          ),
-          const SizedBox(width: 8),
         ],
-      ),
+      ],
     );
   }
 }
