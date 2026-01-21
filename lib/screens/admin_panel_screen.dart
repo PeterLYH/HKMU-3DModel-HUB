@@ -834,7 +834,6 @@ class _UsersManagementTabState extends State<UsersManagementTab> {
 // ==================== MODELS MANAGEMENT TAB ====================
 class ModelsManagementTab extends StatefulWidget {
   const ModelsManagementTab({super.key});
-
   @override
   State<ModelsManagementTab> createState() => _ModelsManagementTabState();
 }
@@ -844,8 +843,9 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
   bool _loading = true;
   bool _hasError = false;
   String _searchQuery = '';
-  final Set<dynamic> _selectedModelIds = {};
+  final Set<String> _selectedModelIds = {};
   bool _selectAllModels = false;
+  bool _isCreatingZip = false;
   static const String _zipFunctionUrl = 'https://mygplwghoudapvhdcrke.supabase.co/functions/v1/zip-models';
 
   @override
@@ -900,7 +900,7 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
     setState(() {
       _selectAllModels = value ?? false;
       if (_selectAllModels) {
-        _selectedModelIds.addAll(_filteredModels.map((m) => m['id']));
+        _selectedModelIds.addAll(_filteredModels.map((m) => m['id'] as String));
       } else {
         _selectedModelIds.clear();
       }
@@ -977,6 +977,9 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
       );
       return;
     }
+
+    setState(() => _isCreatingZip = true);
+
     try {
       final session = Supabase.instance.client.auth.currentSession;
       if (session == null) throw 'Not authenticated';
@@ -991,18 +994,26 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
       if (response.statusCode != 200) {
         throw 'Server error: ${response.statusCode} - ${response.body}';
       }
-      final blob = html.Blob([response.bodyBytes], 'application/zip');
+
+      final bytes = response.bodyBytes;
+      if (bytes.length < 4 || bytes[0] != 0x50 || bytes[1] != 0x4B || bytes[2] != 0x03 || bytes[3] != 0x04) {
+        throw 'Response does not appear to be a valid ZIP file';
+      }
+
+      final blob = html.Blob([bytes], 'application/zip');
       final url = html.Url.createObjectUrlFromBlob(blob);
       html.AnchorElement(href: url)
-        ..setAttribute('download', 'models_${DateTime.now().toIso8601String().substring(0, 10)}.zip')
+        ..setAttribute('download', 'models-${DateTime.now().toIso8601String().substring(0, 10)}.zip')
         ..click();
       html.Url.revokeObjectUrl(url);
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Downloaded ${filePaths.length} models as ZIP file'),
           backgroundColor: AppTheme.hkmuGreen,
         ),
       );
+
       setState(() {
         _selectedModelIds.clear();
         _selectAllModels = false;
@@ -1011,275 +1022,273 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to create ZIP: $e'), backgroundColor: Colors.red),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isCreatingZip = false);
+      }
     }
   }
 
-Future<void> _editModel(Map<String, dynamic> model) async {
-  final nameController = TextEditingController(text: model['name']);
-  final descController = TextEditingController(text: model['description'] ?? '');
-  final sourceController = TextEditingController(text: model['source'] ?? 'HKMU');
-  final licenseController = TextEditingController(text: model['license_type'] ?? 'Non-commercial');
-  final ackController = TextEditingController(text: model['acknowledgement'] ?? '');
+  Future<void> _editModel(Map<String, dynamic> model) async {
+    final nameController = TextEditingController(text: model['name']);
+    final descController = TextEditingController(text: model['description'] ?? '');
+    final sourceController = TextEditingController(text: model['source'] ?? 'HKMU');
+    final licenseController = TextEditingController(text: model['license_type'] ?? 'Non-commercial');
+    final ackController = TextEditingController(text: model['acknowledgement'] ?? '');
 
-  // Fetch real categories from database
-  List<Map<String, dynamic>> allCategories = [];
-  try {
-    final response = await Supabase.instance.client
-        .from('categories')
-        .select('id, name')
-        .order('name', ascending: true);
-    allCategories = List<Map<String, dynamic>>.from(response);
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load categories: $e'), backgroundColor: Colors.red),
-      );
+    List<Map<String, dynamic>> allCategories = [];
+    try {
+      final response = await Supabase.instance.client
+          .from('categories')
+          .select('id, name')
+          .order('name', ascending: true);
+      allCategories = List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load categories: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
-  }
 
-  // Current selected category names from the model
-  final currentCats = (model['categories'] as List<dynamic>?)?.cast<String>() ?? [];
-  // We'll store selected category IDs (recommended if you want to keep referential integrity)
-  final Set<int> selectedCategoryIds = {};
-
-  // Pre-select existing categories by matching names (or change to id if your model stores ids)
-  for (final cat in allCategories) {
-    final catName = cat['name'] as String;
-    final catId = cat['id'] as int;
-    if (currentCats.contains(catName)) {
-      selectedCategoryIds.add(catId);
+    final currentCats = (model['categories'] as List<dynamic>?)?.cast<String>() ?? [];
+    final Set<int> selectedCategoryIds = {};
+    for (final cat in allCategories) {
+      final catName = cat['name'] as String;
+      final catId = cat['id'] as int;
+      if (currentCats.contains(catName)) {
+        selectedCategoryIds.add(catId);
+      }
     }
-  }
 
-  PlatformFile? newModelFile;
-  String? newModelFileName;
-  PlatformFile? newThumbnailFile;
-  String? newThumbnailFileName;
+    PlatformFile? newModelFile;
+    String? newModelFileName;
+    PlatformFile? newThumbnailFile;
+    String? newThumbnailFileName;
 
-  final result = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (context, setDialogState) => AlertDialog(
-        title: const Text('Edit Model'),
-        content: SizedBox(
-          width: 600,
-          height: 700,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    FilePickerResult? result = await FilePicker.platform.pickFiles(
-                      type: FileType.custom,
-                      allowedExtensions: ['glb', 'gltf', 'obj', 'fbx', 'stl', 'blend', 'zip'],
-                      withData: true,
-                    );
-                    if (result != null && result.files.single.bytes != null) {
-                      setDialogState(() {
-                        newModelFile = result.files.single;
-                        newModelFileName = result.files.single.name;
-                      });
-                    }
-                  },
-                  icon: const Icon(Icons.folder_open),
-                  label: Text(newModelFileName ?? 'Replace 3D Model File'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.hkmuGreen,
-                    side: BorderSide(color: AppTheme.hkmuGreen, width: 2),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    minimumSize: const Size(double.infinity, 56),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    FilePickerResult? result = await FilePicker.platform.pickFiles(
-                      type: FileType.image,
-                      withData: true,
-                    );
-                    if (result != null && result.files.single.bytes != null) {
-                      setDialogState(() {
-                        newThumbnailFile = result.files.single;
-                        newThumbnailFileName = result.files.single.name;
-                      });
-                    }
-                  },
-                  icon: const Icon(Icons.image),
-                  label: Text(newThumbnailFileName ?? 'Replace Thumbnail *'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.hkmuGreen,
-                    side: BorderSide(color: AppTheme.hkmuGreen, width: 2),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    minimumSize: const Size(double.infinity, 56),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                if (newThumbnailFile?.bytes != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.memory(newThumbnailFile!.bytes!, height: 220, fit: BoxFit.cover),
-                  )
-                else
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      Supabase.instance.client.storage.from('3d-models').getPublicUrl(model['thumbnail_path']),
-                      height: 220,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        height: 220,
-                        color: Colors.grey[300],
-                        child: const Icon(Icons.image_not_supported, size: 80),
-                      ),
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Model'),
+          content: SizedBox(
+            width: 600,
+            height: 700,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      FilePickerResult? result = await FilePicker.platform.pickFiles(
+                        type: FileType.custom,
+                        allowedExtensions: ['glb', 'gltf', 'obj', 'fbx', 'stl', 'blend', 'zip'],
+                        withData: true,
+                      );
+                      if (result != null && result.files.single.bytes != null) {
+                        setDialogState(() {
+                          newModelFile = result.files.single;
+                          newModelFileName = result.files.single.name;
+                        });
+                      }
+                    },
+                    icon: const Icon(Icons.folder_open),
+                    label: Text(newModelFileName ?? 'Replace 3D Model File'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.hkmuGreen,
+                      side: BorderSide(color: AppTheme.hkmuGreen, width: 2),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      minimumSize: const Size(double.infinity, 56),
                     ),
                   ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Name *', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: descController,
-                  maxLines: 5,
-                  decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: sourceController.text.isEmpty ? 'HKMU' : sourceController.text,
-                  decoration: const InputDecoration(labelText: 'Source', border: OutlineInputBorder()),
-                  items: const ['HKMU', 'Purchased', 'Vendor']
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v != null) sourceController.text = v;
-                  },
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: licenseController.text.isEmpty ? 'Non-commercial' : licenseController.text,
-                  decoration: const InputDecoration(labelText: 'License / Usage', border: OutlineInputBorder()),
-                  items: const ['Non-commercial', 'Commercial']
-                      .map((l) => DropdownMenuItem(value: l, child: Text(l)))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v != null) licenseController.text = v;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: ackController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(labelText: 'Acknowledgement / Credits', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 24),
-                const Text('Categories', style: TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                if (allCategories.isEmpty)
-                  const Text('No categories available', style: TextStyle(color: Colors.grey))
-                else
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: allCategories.map((cat) {
-                      final catId = cat['id'] as int;
-                      final catName = cat['name'] as String;
-                      final isSelected = selectedCategoryIds.contains(catId);
-                      return FilterChip(
-                        label: Text(catName),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setDialogState(() {
-                            if (selected) {
-                              selectedCategoryIds.add(catId);
-                            } else {
-                              selectedCategoryIds.remove(catId);
-                            }
-                          });
-                        },
-                        selectedColor: AppTheme.hkmuGreen.withOpacity(0.3),
-                        checkmarkColor: AppTheme.hkmuGreen,
-                        backgroundColor: Colors.grey[200],
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      FilePickerResult? result = await FilePicker.platform.pickFiles(
+                        type: FileType.image,
+                        withData: true,
                       );
-                    }).toList(),
+                      if (result != null && result.files.single.bytes != null) {
+                        setDialogState(() {
+                          newThumbnailFile = result.files.single;
+                          newThumbnailFileName = result.files.single.name;
+                        });
+                      }
+                    },
+                    icon: const Icon(Icons.image),
+                    label: Text(newThumbnailFileName ?? 'Replace Thumbnail'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.hkmuGreen,
+                      side: BorderSide(color: AppTheme.hkmuGreen, width: 2),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      minimumSize: const Size(double.infinity, 56),
+                    ),
                   ),
-              ],
+                  const SizedBox(height: 24),
+                  if (newThumbnailFile?.bytes != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(newThumbnailFile!.bytes!, height: 220, fit: BoxFit.cover),
+                    )
+                  else
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        Supabase.instance.client.storage.from('3d-models').getPublicUrl(model['thumbnail_path']),
+                        height: 220,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          height: 220,
+                          color: Colors.grey[300],
+                          child: const Icon(Icons.image_not_supported, size: 80),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(labelText: 'Name *', border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: descController,
+                    maxLines: 5,
+                    decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: sourceController.text.isEmpty ? 'HKMU' : sourceController.text,
+                    decoration: const InputDecoration(labelText: 'Source', border: OutlineInputBorder()),
+                    items: const ['HKMU', 'Purchased', 'Vendor']
+                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) sourceController.text = v;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: licenseController.text.isEmpty ? 'Non-commercial' : licenseController.text,
+                    decoration: const InputDecoration(labelText: 'License / Usage', border: OutlineInputBorder()),
+                    items: const ['Non-commercial', 'Commercial']
+                        .map((l) => DropdownMenuItem(value: l, child: Text(l)))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) licenseController.text = v;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: ackController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(labelText: 'Acknowledgement / Credits', border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text('Categories', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  if (allCategories.isEmpty)
+                    const Text('No categories available', style: TextStyle(color: Colors.grey))
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: allCategories.map((cat) {
+                        final catId = cat['id'] as int;
+                        final catName = cat['name'] as String;
+                        final isSelected = selectedCategoryIds.contains(catId);
+                        return FilterChip(
+                          label: Text(catName),
+                          selected: isSelected,
+                          onSelected: (selected) {
+                            setDialogState(() {
+                              if (selected) {
+                                selectedCategoryIds.add(catId);
+                              } else {
+                                selectedCategoryIds.remove(catId);
+                              }
+                            });
+                          },
+                          selectedColor: AppTheme.hkmuGreen.withOpacity(0.3),
+                          checkmarkColor: AppTheme.hkmuGreen,
+                          backgroundColor: Colors.grey[200],
+                        );
+                      }).toList(),
+                    ),
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.hkmuGreen),
+              child: const Text('Save Changes', style: TextStyle(color: Colors.white)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.hkmuGreen),
-            child: const Text('Save Changes', style: TextStyle(color: Colors.white)),
-          ),
-        ],
       ),
-    ),
-  );
+    );
 
-  if (result != true) return;
+    if (result != true) return;
 
-  try {
-    // Convert selected IDs back to category names for saving
-    final selectedNames = allCategories
-        .where((cat) => selectedCategoryIds.contains(cat['id'] as int))
-        .map((cat) => cat['name'] as String)
-        .toList();
+    try {
+      final selectedNames = allCategories
+          .where((cat) => selectedCategoryIds.contains(cat['id'] as int))
+          .map((cat) => cat['name'] as String)
+          .toList();
 
-    Map<String, dynamic> updates = {
-      'name': nameController.text.trim(),
-      'description': descController.text.trim(),
-      'source': sourceController.text,
-      'license_type': licenseController.text,
-      'acknowledgement': ackController.text.trim().isEmpty ? null : ackController.text.trim(),
-      'categories': selectedNames,  // or selectedCategoryIds.toList() if you store IDs
-    };
+      Map<String, dynamic> updates = {
+        'name': nameController.text.trim(),
+        'description': descController.text.trim(),
+        'source': sourceController.text,
+        'license_type': licenseController.text,
+        'acknowledgement': ackController.text.trim().isEmpty ? null : ackController.text.trim(),
+        'categories': selectedNames,
+      };
 
-    String? newModelPath;
-    String? newThumbPath;
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
+      String? newModelPath;
+      String? newThumbPath;
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
 
-    if (newModelFile != null) {
-      final uniqueName = '${timestamp}_model_$newModelFileName';
-      newModelPath = 'models/${model['user_id']}/$uniqueName';
-      await Supabase.instance.client.storage
-          .from('3d-models')
-          .uploadBinary(newModelPath, newModelFile!.bytes!);
-      updates['file_path'] = newModelPath;
-      updates['file_type'] = '.${newModelFileName!.split('.').last.toUpperCase()}';
-    }
+      if (newModelFile != null) {
+        final uniqueName = '${timestamp}_model_${newModelFileName}';
+        newModelPath = 'models/${model['user_id']}/$uniqueName';
+        await Supabase.instance.client.storage
+            .from('3d-models')
+            .uploadBinary(newModelPath, newModelFile!.bytes!);
+        updates['file_path'] = newModelPath;
+        updates['file_type'] = '.${newModelFileName!.split('.').last.toUpperCase()}';
+      }
 
-    if (newThumbnailFile != null) {
-      final uniqueName = '${timestamp}_thumb_$newThumbnailFileName';
-      newThumbPath = 'models/${model['user_id']}/$uniqueName';
-      await Supabase.instance.client.storage
-          .from('3d-models')
-          .uploadBinary(newThumbPath, newThumbnailFile!.bytes!);
-      updates['thumbnail_path'] = newThumbPath;
-    }
+      if (newThumbnailFile != null) {
+        final uniqueName = '${timestamp}_thumb_${newThumbnailFileName}';
+        newThumbPath = 'models/${model['user_id']}/$uniqueName';
+        await Supabase.instance.client.storage
+            .from('3d-models')
+            .uploadBinary(newThumbPath, newThumbnailFile!.bytes!);
+        updates['thumbnail_path'] = newThumbPath;
+      }
 
-    await Supabase.instance.client.from('models').update(updates).eq('id', model['id']);
+      await Supabase.instance.client.from('models').update(updates).eq('id', model['id']);
 
-    setState(() {
-      model.addAll(updates);
-    });
+      setState(() {
+        model.addAll(updates);
+      });
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Model updated successfully'), backgroundColor: AppTheme.hkmuGreen),
-      );
-    }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to update model'), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Model updated successfully'), backgroundColor: AppTheme.hkmuGreen),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update model'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
-}
 
   Future<void> _deleteModel(Map<String, dynamic> model) async {
     final confirm = await showDialog<bool>(
@@ -1336,7 +1345,7 @@ Future<void> _editModel(Map<String, dynamic> model) async {
       final suggestedName = model['name'] != null
           ? '${model['name']}${model['file_type'] ?? ''}'
           : 'model${model['file_type'] ?? ''}';
-      final _ = html.AnchorElement(href: signedUrl)
+      html.AnchorElement(href: signedUrl)
         ..setAttribute('download', suggestedName)
         ..style.display = 'none'
         ..click()
@@ -1361,7 +1370,7 @@ Future<void> _editModel(Map<String, dynamic> model) async {
     return _models.where((model) {
       final name = model['name']?.toString().toLowerCase() ?? '';
       final fileType = model['file_type']?.toString().toLowerCase() ?? '';
-      final cats = (model['categories'] as List<dynamic>?)?.cast<String>() ?? [];
+      final cats = (model['categories'] as List?)?.cast<String>() ?? [];
       final catString = cats.join(' ').toLowerCase();
       return name.contains(query) || fileType.contains(query) || catString.contains(query);
     }).toList();
@@ -1379,266 +1388,292 @@ Future<void> _editModel(Map<String, dynamic> model) async {
     final double textScale = isMobile ? 1.18 : 1.05;
     final double cardAspect = isMobile ? 0.70 : 0.78;
 
-    return Padding(
-      padding: EdgeInsets.all(isMobile ? 16.0 : 32.0),
-      child: Column(
-        children: [
-          Row(
+    return Stack(
+      children: [
+        Padding(
+          padding: EdgeInsets.all(isMobile ? 16.0 : 32.0),
+          child: Column(
             children: [
-              Expanded(
-                child: TextField(
-                  onChanged: (value) => setState(() => _searchQuery = value),
-                  decoration: InputDecoration(
-                    hintText: 'Search by name, category, or file type...',
-                    prefixIcon: const Icon(Icons.search),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                    filled: true,
-                    fillColor: isDark ? Colors.grey[850] : Colors.grey[100],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              IconButton(
-                icon: const Icon(Icons.upload_file),
-                tooltip: 'Upload New Model',
-                color: AppTheme.hkmuGreen,
-                onPressed: () => context.go('/upload'),
-              ),
-              const SizedBox(width: 12),
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                tooltip: 'Refresh',
-                color: AppTheme.hkmuGreen,
-                onPressed: _loadModels,
-              ),
-            ],
-          ),
-          if (_selectedModelIds.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Row(
+              Row(
                 children: [
-                  Text(
-                    '${_selectedModelIds.length} selected',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(width: 24),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.archive, color: Colors.teal),
-                    label: const Text('Download as ZIP', style: TextStyle(color: Colors.teal)),
-                    onPressed: _batchDownloadAsZip,
+                  Expanded(
+                    child: TextField(
+                      onChanged: (value) => setState(() => _searchQuery = value),
+                      decoration: InputDecoration(
+                        hintText: 'Search by name, category, or file type...',
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                        filled: true,
+                        fillColor: isDark ? Colors.grey[850] : Colors.grey[100],
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 16),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.delete_forever, color: Colors.red),
-                    label: const Text('Delete Selected', style: TextStyle(color: Colors.red)),
-                    onPressed: _batchDeleteModels,
+                  IconButton(
+                    icon: const Icon(Icons.upload_file),
+                    tooltip: 'Upload New Model',
+                    color: AppTheme.hkmuGreen,
+                    onPressed: () => context.go('/upload'),
                   ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      _selectedModelIds.clear();
-                      _selectAllModels = false;
-                    }),
-                    child: const Text('Clear'),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Refresh',
+                    color: AppTheme.hkmuGreen,
+                    onPressed: _loadModels,
                   ),
                 ],
               ),
-            ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Checkbox(
-                value: _selectAllModels,
-                onChanged: _toggleSelectAllModels,
+              if (_selectedModelIds.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${_selectedModelIds.length} selected',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(width: 24),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.archive, color: Colors.teal),
+                        label: const Text('Download as ZIP', style: TextStyle(color: Colors.teal)),
+                        onPressed: _isCreatingZip ? null : _batchDownloadAsZip,
+                      ),
+                      const SizedBox(width: 16),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.delete_forever, color: Colors.red),
+                        label: const Text('Delete Selected', style: TextStyle(color: Colors.red)),
+                        onPressed: _batchDeleteModels,
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => setState(() {
+                          _selectedModelIds.clear();
+                          _selectAllModels = false;
+                        }),
+                        child: const Text('Clear'),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Checkbox(
+                    value: _selectAllModels,
+                    onChanged: _toggleSelectAllModels,
+                  ),
+                  const Text('Select all'),
+                ],
               ),
-              const Text('Select all'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _hasError
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.error_outline, size: 80, color: Colors.red),
-                            const SizedBox(height: 24),
-                            const Text('Failed to load models', style: TextStyle(fontSize: 20)),
-                            const SizedBox(height: 16),
-                            OutlinedButton(onPressed: _loadModels, child: const Text('Retry')),
-                          ],
-                        ),
-                      )
-                    : _filteredModels.isEmpty
-                        ? const Center(child: Text('No models found', style: TextStyle(fontSize: 18)))
-                        : LayoutBuilder(
-                            builder: (context, constraints) {
-                              final width = constraints.maxWidth;
-                              int crossAxisCount = 1;
-                              if (width > 1400) crossAxisCount = 4;
-                              else if (width > 1000) crossAxisCount = 3;
-                              else if (width > 680) crossAxisCount = 2;
-
-                              return GridView.builder(
-                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: crossAxisCount,
-                                  childAspectRatio: cardAspect,
-                                  crossAxisSpacing: 16,
-                                  mainAxisSpacing: isMobile ? 24 : 20,
-                                ),
-                                itemCount: _filteredModels.length,
-                                itemBuilder: (context, index) {
-                                  final model = _filteredModels[index];
-                                  final id = model['id'];
-                                  final name = model['name'] ?? 'Untitled';
-                                  final fileType = (model['file_type'] as String?)?.toUpperCase() ?? '—';
-                                  final uploaderEmail = model['uploader_email'] ?? 'Unknown';
-                                  final createdAt = DateTime.tryParse(model['created_at'] ?? '') ?? DateTime.now();
-                                  final cats = (model['categories'] as List<dynamic>?)?.cast<String>() ?? [];
-                                  final displayCats = cats.isEmpty ? '—' : cats.join(', ');
-                                  final isSelected = _selectedModelIds.contains(id);
-
-                                  return Card(
-                                    elevation: 3,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                    clipBehavior: Clip.antiAlias,
-                                    color: isSelected ? AppTheme.hkmuGreen.withOpacity(0.08) : null,
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                                      children: [
-                                        Padding(
-                                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                                          child: Row(
-                                            children: [
-                                              Checkbox(
-                                                value: isSelected,
-                                                onChanged: (v) => _toggleModelSelection(id, v),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(
-                                                  name,
-                                                  style: TextStyle(
-                                                    fontSize: 17 * textScale,
-                                                    fontWeight: FontWeight.bold,
+              const SizedBox(height: 16),
+              Expanded(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _hasError
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.error_outline, size: 80, color: Colors.red),
+                                const SizedBox(height: 24),
+                                const Text('Failed to load models', style: TextStyle(fontSize: 20)),
+                                const SizedBox(height: 16),
+                                OutlinedButton(onPressed: _loadModels, child: const Text('Retry')),
+                              ],
+                            ),
+                          )
+                        : _filteredModels.isEmpty
+                            ? const Center(child: Text('No models found', style: TextStyle(fontSize: 18)))
+                            : LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final width = constraints.maxWidth;
+                                  int crossAxisCount = 1;
+                                  if (width > 1400) crossAxisCount = 4;
+                                  else if (width > 1000) crossAxisCount = 3;
+                                  else if (width > 680) crossAxisCount = 2;
+                                  return GridView.builder(
+                                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: crossAxisCount,
+                                      childAspectRatio: cardAspect,
+                                      crossAxisSpacing: 16,
+                                      mainAxisSpacing: isMobile ? 24 : 20,
+                                    ),
+                                    itemCount: _filteredModels.length,
+                                    itemBuilder: (context, index) {
+                                      final model = _filteredModels[index];
+                                      final id = model['id'];
+                                      final name = model['name'] ?? 'Untitled';
+                                      final fileType = (model['file_type'] as String?)?.toUpperCase() ?? '—';
+                                      final uploaderEmail = model['uploader_email'] ?? 'Unknown';
+                                      final createdAt = DateTime.tryParse(model['created_at'] ?? '') ?? DateTime.now();
+                                      final cats = (model['categories'] as List?)?.cast<String>() ?? [];
+                                      final displayCats = cats.isEmpty ? '—' : cats.join(', ');
+                                      final isSelected = _selectedModelIds.contains(id);
+                                      return Card(
+                                        elevation: 3,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                        clipBehavior: Clip.antiAlias,
+                                        color: isSelected ? AppTheme.hkmuGreen.withOpacity(0.08) : null,
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                                          children: [
+                                            Padding(
+                                              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                                              child: Row(
+                                                children: [
+                                                  Checkbox(
+                                                    value: isSelected,
+                                                    onChanged: (v) => _toggleModelSelection(id, v),
                                                   ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        Expanded(
-                                          child: Image.network(
-                                            getThumbnailUrl(model['thumbnail_path']),
-                                            fit: BoxFit.cover,
-                                            width: double.infinity,
-                                            errorBuilder: (context, error, stackTrace) => Container(
-                                              color: Colors.grey[850],
-                                              child: const Center(
-                                                child: Icon(Icons.broken_image, size: 48, color: Colors.grey),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Text(
+                                                      name,
+                                                      style: TextStyle(
+                                                        fontSize: 17 * textScale,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
-                                          ),
-                                        ),
-                                        Padding(
-                                          padding: EdgeInsets.all(isMobile ? 16.0 : 12.0),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                displayCats,
-                                                style: TextStyle(
-                                                  fontSize: 15.5 * textScale,
-                                                  color: theme.colorScheme.onSurfaceVariant,
-                                                  height: 1.35,
-                                                ),
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              const SizedBox(height: 6),
-                                              Text(
-                                                fileType,
-                                                style: TextStyle(
-                                                  color: AppTheme.hkmuGreen,
-                                                  fontSize: 15 * textScale,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 12),
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                crossAxisAlignment: CrossAxisAlignment.center,
-                                                children: [
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        uploaderEmail,
-                                                        style: TextStyle(
-                                                          fontSize: 14.5 * textScale,
-                                                          color: theme.colorScheme.onSurfaceVariant,
-                                                        ),
-                                                        overflow: TextOverflow.ellipsis,
-                                                      ),
-                                                      Text(
-                                                        DateFormat('dd/MM/yy').format(createdAt),
-                                                        style: TextStyle(
-                                                          fontSize: 13.5 * textScale,
-                                                          color: theme.colorScheme.onSurfaceVariant.withOpacity(0.75),
-                                                        ),
-                                                      ),
-                                                    ],
+                                            Expanded(
+                                              child: Image.network(
+                                                getThumbnailUrl(model['thumbnail_path']),
+                                                fit: BoxFit.cover,
+                                                width: double.infinity,
+                                                errorBuilder: (context, error, stackTrace) => Container(
+                                                  color: Colors.grey[850],
+                                                  child: const Center(
+                                                    child: Icon(Icons.broken_image, size: 48, color: Colors.grey),
                                                   ),
+                                                ),
+                                              ),
+                                            ),
+                                            Padding(
+                                              padding: EdgeInsets.all(isMobile ? 16.0 : 12.0),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    displayCats,
+                                                    style: TextStyle(
+                                                      fontSize: 15.5 * textScale,
+                                                      color: theme.colorScheme.onSurfaceVariant,
+                                                      height: 1.35,
+                                                    ),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Text(
+                                                    fileType,
+                                                    style: TextStyle(
+                                                      color: AppTheme.hkmuGreen,
+                                                      fontSize: 15 * textScale,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 12),
                                                   Row(
-                                                    mainAxisSize: MainAxisSize.min,
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    crossAxisAlignment: CrossAxisAlignment.center,
                                                     children: [
-                                                      IconButton(
-                                                        icon: const Icon(Icons.edit, color: Colors.blue),
-                                                        tooltip: 'Edit',
-                                                        onPressed: () => _editModel(model),
+                                                      Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          Text(
+                                                            uploaderEmail,
+                                                            style: TextStyle(
+                                                              fontSize: 14.5 * textScale,
+                                                              color: theme.colorScheme.onSurfaceVariant,
+                                                            ),
+                                                            overflow: TextOverflow.ellipsis,
+                                                          ),
+                                                          Text(
+                                                            DateFormat('dd/MM/yy').format(createdAt),
+                                                            style: TextStyle(
+                                                              fontSize: 13.5 * textScale,
+                                                              color: theme.colorScheme.onSurfaceVariant.withOpacity(0.75),
+                                                            ),
+                                                          ),
+                                                        ],
                                                       ),
-                                                      IconButton(
-                                                        icon: SvgPicture.asset(
-                                                          'assets/icons/download.svg',
-                                                          colorFilter: const ColorFilter.mode(Colors.green, BlendMode.srcIn),
-                                                          width: 26,
-                                                          height: 26,
-                                                        ),
-                                                        tooltip: 'Download',
-                                                        onPressed: () => _downloadModel(model),
-                                                      ),
-                                                      IconButton(
-                                                        icon: SvgPicture.asset(
-                                                          'assets/icons/delete.svg',
-                                                          colorFilter: const ColorFilter.mode(Colors.red, BlendMode.srcIn),
-                                                          width: 26,
-                                                          height: 26,
-                                                        ),
-                                                        tooltip: 'Delete',
-                                                        onPressed: () => _deleteModel(model),
+                                                      Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          IconButton(
+                                                            icon: const Icon(Icons.edit, color: Colors.blue),
+                                                            tooltip: 'Edit',
+                                                            onPressed: () => _editModel(model),
+                                                          ),
+                                                          IconButton(
+                                                            icon: SvgPicture.asset(
+                                                              'assets/icons/download.svg',
+                                                              colorFilter: const ColorFilter.mode(Colors.green, BlendMode.srcIn),
+                                                              width: 26,
+                                                              height: 26,
+                                                            ),
+                                                            tooltip: 'Download',
+                                                            onPressed: () => _downloadModel(model),
+                                                          ),
+                                                          IconButton(
+                                                            icon: SvgPicture.asset(
+                                                              'assets/icons/delete.svg',
+                                                              colorFilter: const ColorFilter.mode(Colors.red, BlendMode.srcIn),
+                                                              width: 26,
+                                                              height: 26,
+                                                            ),
+                                                            tooltip: 'Delete',
+                                                            onPressed: () => _deleteModel(model),
+                                                          ),
+                                                        ],
                                                       ),
                                                     ],
                                                   ),
                                                 ],
                                               ),
-                                            ],
-                                          ),
+                                            ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
+                                      );
+                                    },
                                   );
                                 },
-                              );
-                            },
-                          ),
+                              ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        if (_isCreatingZip)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withOpacity(0.7),
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 24),
+                    Text(
+                      'Creating ZIP file...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -1816,33 +1851,6 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
     }
   }
 
-  Future<String?> _createZipAndGetDownloadUrl(String requestId) async {
-    try {
-      final filePaths = await _getModelFilePaths(requestId);
-      if (filePaths.isEmpty) return null;
-      final session = Supabase.instance.client.auth.currentSession;
-      if (session == null) throw 'Not authenticated';
-      final response = await http.post(
-        Uri.parse('https://mygplwghoudapvhdcrke.supabase.co/functions/v1/zip-models'),
-        headers: {
-          'Authorization': 'Bearer ${session.accessToken}',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({'filePaths': filePaths}),
-      );
-      if (response.statusCode != 200) {
-        throw 'Server returned ${response.statusCode} – ${response.body}';
-      }
-      final json = jsonDecode(response.body);
-      if (json['success'] != true || json['downloadUrl'] == null) {
-        throw 'Invalid response from zip function';
-      }
-      return json['downloadUrl'] as String;
-    } catch (e) {
-      return null;
-    }
-  }
-
   Future<void> _updateStatus(
     String id,
     String newStatus, {
@@ -1867,24 +1875,63 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
           .from('download_requests')
           .update(updateData)
           .eq('id', id);
+
       final req = _requests.firstWhere((r) => r['id'] == id);
-      final emailAddr = req['email'] as String? ?? '';
-      final modelNames = (req['model_names'] as List?)?.cast<String>() ?? [];
-      final userName = emailAddr.split('@').first.trim();
-      String? downloadUrl;
+      String message = newStatus == 'processed'
+          ? 'Request processed – ZIP download started'
+          : 'Request marked as rejected${rejectReason?.isNotEmpty == true ? ' with reason' : ''}';
+
       if (newStatus == 'processed') {
-        downloadUrl = await _createZipAndGetDownloadUrl(id);
+        final filePaths = await _getModelFilePaths(id);
+        if (filePaths.isNotEmpty) {
+          final session = Supabase.instance.client.auth.currentSession;
+          if (session == null) throw 'Not authenticated';
+          final response = await http.post(
+            Uri.parse('https://mygplwghoudapvhdcrke.supabase.co/functions/v1/zip-models'),
+            headers: {
+              'Authorization': 'Bearer ${session.accessToken}',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'filePaths': filePaths}),
+          );
+
+          if (response.statusCode == 200) {
+            final bytes = response.bodyBytes;
+
+            if (bytes.length < 4 ||
+                bytes[0] != 0x50 ||
+                bytes[1] != 0x4B ||
+                bytes[2] != 0x03 ||
+                bytes[3] != 0x04) {
+              throw 'Response does not appear to be a valid ZIP file';
+            }
+
+            final blob = html.Blob([bytes], 'application/zip');
+            final url = html.Url.createObjectUrlFromBlob(blob);
+
+            final fileName = 'hkmu-request-$id-${DateTime.now().toIso8601String().substring(0, 10)}.zip';
+
+            html.AnchorElement(href: url)
+              ..setAttribute('download', fileName)
+              ..style.display = 'none'
+              ..click();
+
+            html.Url.revokeObjectUrl(url);
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('ZIP downloaded (${filePaths.length} models)'),
+                backgroundColor: AppTheme.hkmuGreen,
+              ),
+            );
+          } else {
+            throw 'ZIP creation failed: ${response.statusCode} – ${response.body}';
+          }
+        } else {
+          message = 'Processed, but no files available to download';
+        }
       }
-      if (emailAddr.isNotEmpty && (newStatus == 'processed' || newStatus == 'rejected')) {
-        await sendRequestStatusEmail(
-          toEmail: emailAddr,
-          userName: userName,
-          status: newStatus,
-          rejectReason: newStatus == 'rejected' ? (rejectReason ?? 'Not specified') : null,
-          modelNames: modelNames,
-          downloadUrl: downloadUrl,
-        );
-      }
+
       setState(() {
         req['status'] = newStatus;
         req['updated_at'] = DateTime.now().toIso8601String();
@@ -1893,14 +1940,11 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
           req['reject_reason'] = rejectReason;
         }
       });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              newStatus == 'processed'
-                  ? 'Request processed – download link sent by email'
-                  : 'Request marked as rejected${rejectReason?.isNotEmpty == true ? ' with reason' : ''}',
-            ),
+            content: Text(message),
             backgroundColor: AppTheme.hkmuGreen,
           ),
         );
@@ -1908,7 +1952,7 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update status: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -1986,378 +2030,382 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
     final bool isMobile = MediaQuery.of(context).size.width < 600;
     final double basePadding = isMobile ? 16.0 : 24.0;
 
-    return Padding(
-      padding: EdgeInsets.all(basePadding),
-      child: Column(
-        children: [
-          Row(
+    return Stack(
+      children: [
+        Padding(
+          padding: EdgeInsets.all(basePadding),
+          child: Column(
             children: [
-              Expanded(
-                child: TextField(
-                  onChanged: (value) => setState(() => _searchQuery = value),
-                  style: TextStyle(fontSize: isMobile ? 17 : 16),
-                  decoration: InputDecoration(
-                    hintText: 'Search by email or status...',
-                    hintStyle: TextStyle(fontSize: isMobile ? 16 : 15),
-                    prefixIcon: const Icon(Icons.search),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    filled: true,
-                    fillColor: isDark ? Colors.grey[850] : Colors.grey[100],
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: isMobile ? 14 : 12,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                tooltip: 'Refresh',
-                onPressed: _loadRequests,
-                color: AppTheme.hkmuGreen,
-                iconSize: 28,
-              ),
-            ],
-          ),
-          if (_selectedIds.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Row(
+              Row(
                 children: [
-                  Text(
-                    '${_selectedIds.length} selected',
-                    style: TextStyle(
-                      fontSize: isMobile ? 17 : 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: 24),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.delete_forever, color: Colors.red),
-                    label: Text(
-                      'Delete Selected',
-                      style: TextStyle(
-                        fontSize: isMobile ? 16 : 15,
-                        color: Colors.red,
+                  Expanded(
+                    child: TextField(
+                      onChanged: (value) => setState(() => _searchQuery = value),
+                      style: TextStyle(fontSize: isMobile ? 17 : 16),
+                      decoration: InputDecoration(
+                        hintText: 'Search by email or status...',
+                        hintStyle: TextStyle(fontSize: isMobile ? 16 : 15),
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        filled: true,
+                        fillColor: isDark ? Colors.grey[850] : Colors.grey[100],
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: isMobile ? 14 : 12,
+                        ),
                       ),
                     ),
-                    onPressed: _batchDeleteProcessedOrRejected,
                   ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      _selectedIds.clear();
-                      _selectAll = false;
-                    }),
-                    child: Text(
-                      'Clear',
-                      style: TextStyle(fontSize: isMobile ? 16 : 15),
-                    ),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Refresh',
+                    onPressed: _loadRequests,
+                    color: AppTheme.hkmuGreen,
+                    iconSize: 28,
                   ),
                 ],
               ),
-            ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Checkbox(
-                value: _selectAll,
-                onChanged: _toggleSelectAll,
-              ),
-              Text(
-                'Select all',
-                style: TextStyle(fontSize: isMobile ? 17 : 16),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _hasError
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.error_outline, size: 80, color: Colors.red),
-                            const SizedBox(height: 24),
-                            Text(
-                              'Failed to load requests',
-                              style: TextStyle(fontSize: isMobile ? 24 : 22),
-                            ),
-                            const SizedBox(height: 16),
-                            OutlinedButton(
-                              onPressed: _loadRequests,
-                              child: Text(
-                                'Retry',
-                                style: TextStyle(fontSize: isMobile ? 17 : 16),
-                              ),
-                            ),
-                          ],
+              if (_selectedIds.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${_selectedIds.length} selected',
+                        style: TextStyle(
+                          fontSize: isMobile ? 17 : 16,
+                          fontWeight: FontWeight.w600,
                         ),
-                      )
-                    : _requests.isEmpty
-                        ? Text(
-                            'No download requests yet.',
-                            style: TextStyle(fontSize: isMobile ? 22 : 20),
-                          )
-                        : LayoutBuilder(
-                            builder: (context, constraints) {
-                              final width = constraints.maxWidth;
-                              int crossAxisCount = 1;
-                              double childAspectRatio = isMobile ? 1.05 : 1.25;
-
-                              if (width > 1600) {
-                                crossAxisCount = 4;
-                                childAspectRatio = 1.35;
-                              } else if (width > 1200) {
-                                crossAxisCount = 3;
-                                childAspectRatio = 1.32;
-                              } else if (width > 800) {
-                                crossAxisCount = 2;
-                                childAspectRatio = 1.28;
-                              }
-
-                              return GridView.builder(
-                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: crossAxisCount,
-                                  childAspectRatio: childAspectRatio,
-                                  crossAxisSpacing: 16,
-                                  mainAxisSpacing: 20,
+                      ),
+                      const SizedBox(width: 24),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.delete_forever, color: Colors.red),
+                        label: Text(
+                          'Delete Selected',
+                          style: TextStyle(
+                            fontSize: isMobile ? 16 : 15,
+                            color: Colors.red,
+                          ),
+                        ),
+                        onPressed: _batchDeleteProcessedOrRejected,
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => setState(() {
+                          _selectedIds.clear();
+                          _selectAll = false;
+                        }),
+                        child: Text(
+                          'Clear',
+                          style: TextStyle(fontSize: isMobile ? 16 : 15),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Checkbox(
+                    value: _selectAll,
+                    onChanged: _toggleSelectAll,
+                  ),
+                  Text(
+                    'Select all',
+                    style: TextStyle(fontSize: isMobile ? 17 : 16),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _hasError
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.error_outline, size: 80, color: Colors.red),
+                                const SizedBox(height: 24),
+                                Text(
+                                  'Failed to load requests',
+                                  style: TextStyle(fontSize: isMobile ? 24 : 22),
                                 ),
-                                itemCount: _filteredRequests.length,
-                                itemBuilder: (context, index) {
-                                  final req = _filteredRequests[index];
-                                  final id = req['id'] as String;
-                                  final email = req['email'] as String? ?? 'Unknown';
-                                  final status = req['status'] as String? ?? 'pending';
-                                  final description = (req['description'] as String? ?? '—').trim();
-                                  final modelNames = (req['model_names'] as List?)?.cast<String>() ?? [];
-                                  final createdAt = DateTime.tryParse(req['created_at'] ?? '') ?? DateTime.now();
-                                  final isSelected = _selectedIds.contains(id);
-                                  final isProcessing = _processingRequests[id] == true;
+                                const SizedBox(height: 16),
+                                OutlinedButton(
+                                  onPressed: _loadRequests,
+                                  child: Text(
+                                    'Retry',
+                                    style: TextStyle(fontSize: isMobile ? 17 : 16),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : _requests.isEmpty
+                            ? Text(
+                                'No download requests yet.',
+                                style: TextStyle(fontSize: isMobile ? 22 : 20),
+                              )
+                            : LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final width = constraints.maxWidth;
+                                  int crossAxisCount = 1;
+                                  double childAspectRatio = isMobile ? 1.05 : 1.25;
 
-                                  Color statusColor = status == 'processed'
-                                      ? Colors.green[700]!
-                                      : status == 'rejected'
-                                          ? Colors.red[700]!
-                                          : Colors.orange[800]!;
+                                  if (width > 1600) {
+                                    crossAxisCount = 4;
+                                    childAspectRatio = 1.35;
+                                  } else if (width > 1200) {
+                                    crossAxisCount = 3;
+                                    childAspectRatio = 1.32;
+                                  } else if (width > 800) {
+                                    crossAxisCount = 2;
+                                    childAspectRatio = 1.28;
+                                  }
 
-                                  return LayoutBuilder(
-                                    builder: (context, cardConstraints) {
-                                      final double baseCardWidth = 420.0;
-                                      final double scale = (cardConstraints.maxWidth / baseCardWidth).clamp(0.75, 1.45);
+                                  return GridView.builder(
+                                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: crossAxisCount,
+                                      childAspectRatio: childAspectRatio,
+                                      crossAxisSpacing: 16,
+                                      mainAxisSpacing: 20,
+                                    ),
+                                    itemCount: _filteredRequests.length,
+                                    itemBuilder: (context, index) {
+                                      final req = _filteredRequests[index];
+                                      final id = req['id'] as String;
+                                      final email = req['email'] as String? ?? 'Unknown';
+                                      final status = req['status'] as String? ?? 'pending';
+                                      final description = (req['description'] as String? ?? '—').trim();
+                                      final modelNames = (req['model_names'] as List?)?.cast<String>() ?? [];
+                                      final createdAt = DateTime.tryParse(req['created_at'] ?? '') ?? DateTime.now();
+                                      final isSelected = _selectedIds.contains(id);
+                                      final isProcessing = _processingRequests[id] == true;
 
-                                      return Card(
-                                        color: isSelected ? AppTheme.hkmuGreen.withOpacity(0.08) : null,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                        elevation: 2,
-                                        child: Padding(
-                                          padding: EdgeInsets.all(isMobile ? 16 : 12),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
+                                      Color statusColor = status == 'processed'
+                                          ? Colors.green[700]!
+                                          : status == 'rejected'
+                                              ? Colors.red[700]!
+                                              : Colors.orange[800]!;
+
+                                      return LayoutBuilder(
+                                        builder: (context, cardConstraints) {
+                                          final double baseCardWidth = 420.0;
+                                          final double scale = (cardConstraints.maxWidth / baseCardWidth).clamp(0.75, 1.45);
+
+                                          return Card(
+                                            color: isSelected ? AppTheme.hkmuGreen.withOpacity(0.08) : null,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                            elevation: 2,
+                                            child: Padding(
+                                              padding: EdgeInsets.all(isMobile ? 16 : 12),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
-                                                  Checkbox(
-                                                    value: isSelected,
-                                                    onChanged: isProcessing ? null : (v) => _toggleSelection(id, v),
-                                                  ),
-                                                  const SizedBox(width: 12),
-                                                  Expanded(
-                                                    child: Text(
-                                                      email,
-                                                      style: TextStyle(
-                                                        fontSize: 17 * scale,
-                                                        fontWeight: FontWeight.w700,
+                                                  Row(
+                                                    children: [
+                                                      Checkbox(
+                                                        value: isSelected,
+                                                        onChanged: isProcessing ? null : (v) => _toggleSelection(id, v),
                                                       ),
+                                                      const SizedBox(width: 12),
+                                                      Expanded(
+                                                        child: Text(
+                                                          email,
+                                                          style: TextStyle(
+                                                            fontSize: 17 * scale,
+                                                            fontWeight: FontWeight.w700,
+                                                          ),
+                                                          overflow: TextOverflow.ellipsis,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 12),
+                                                  Chip(
+                                                    label: Text(status.toUpperCase()),
+                                                    backgroundColor: statusColor,
+                                                    labelStyle: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 13 * scale,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                    padding: EdgeInsets.symmetric(horizontal: 14 * scale),
+                                                  ),
+                                                  const SizedBox(height: 12),
+                                                  Text(
+                                                    'Requested: ${DateFormat('dd/MM/yyyy HH:mm').format(createdAt)}',
+                                                    style: TextStyle(
+                                                      fontSize: 13.5 * scale,
+                                                      color: Colors.grey[600],
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 16),
+                                                  if (modelNames.isNotEmpty) ...[
+                                                    Text(
+                                                      'Models (${modelNames.length}):',
+                                                      style: TextStyle(
+                                                        fontSize: 14.5 * scale,
+                                                        fontWeight: FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 6),
+                                                    Text(
+                                                      modelNames.length <= 4
+                                                          ? modelNames.join(', ')
+                                                          : '${modelNames.length} models',
+                                                      style: TextStyle(fontSize: 13.5 * scale),
+                                                      maxLines: 2,
                                                       overflow: TextOverflow.ellipsis,
                                                     ),
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 12),
-                                              Chip(
-                                                label: Text(status.toUpperCase()),
-                                                backgroundColor: statusColor,
-                                                labelStyle: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 13 * scale,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                                padding: EdgeInsets.symmetric(horizontal: 14 * scale),
-                                              ),
-                                              const SizedBox(height: 12),
-                                              Text(
-                                                'Requested: ${DateFormat('dd/MM/yyyy HH:mm').format(createdAt)}',
-                                                style: TextStyle(
-                                                  fontSize: 13.5 * scale,
-                                                  color: Colors.grey[600],
-                                                ),
-                                              ),
-                                              const SizedBox(height: 16),
-                                              if (modelNames.isNotEmpty) ...[
-                                                Text(
-                                                  'Models (${modelNames.length}):',
-                                                  style: TextStyle(
-                                                    fontSize: 14.5 * scale,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 6),
-                                                Text(
-                                                  modelNames.length <= 4
-                                                      ? modelNames.join(', ')
-                                                      : '${modelNames.length} models',
-                                                  style: TextStyle(fontSize: 13.5 * scale),
-                                                  maxLines: 2,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              ],
-                                              if (description != '—') ...[
-                                                const SizedBox(height: 16),
-                                                Text(
-                                                  'Reason:',
-                                                  style: TextStyle(
-                                                    fontSize: 15 * scale,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 6),
-                                                Text(
-                                                  description,
-                                                  style: TextStyle(fontSize: 13.5 * scale),
-                                                  maxLines: 3,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              ],
-                                              const Spacer(),
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.end,
-                                                children: [
-                                                  if (status == 'pending') ...[
-                                                    IconButton(
-                                                      icon: SvgPicture.asset(
-                                                        'assets/icons/check_circle.svg',
-                                                        colorFilter: const ColorFilter.mode(Colors.green, BlendMode.srcIn),
-                                                        width: 28 * scale,
-                                                        height: 28 * scale,
+                                                  ],
+                                                  if (description != '—') ...[
+                                                    const SizedBox(height: 16),
+                                                    Text(
+                                                      'Reason:',
+                                                      style: TextStyle(
+                                                        fontSize: 15 * scale,
+                                                        fontWeight: FontWeight.w600,
                                                       ),
-                                                      tooltip: 'Mark as Processed',
-                                                      onPressed: isProcessing ? null : () => _updateStatus(id, 'processed'),
                                                     ),
-                                                    IconButton(
-                                                      icon: const Icon(Icons.cancel, color: Colors.red),
-                                                      iconSize: 28 * scale,
-                                                      tooltip: 'Reject',
-                                                      onPressed: isProcessing ? null : () async {
-                                                        final reasonCtrl = TextEditingController();
-                                                        final confirmed = await showDialog<bool>(
-                                                          context: context,
-                                                          builder: (ctx) => AlertDialog(
-                                                            title: const Text('Reject Request'),
-                                                            content: Column(
-                                                              mainAxisSize: MainAxisSize.min,
-                                                              children: [
-                                                                const Text('Reason for rejection:'),
-                                                                const SizedBox(height: 12),
-                                                                TextField(
-                                                                  controller: reasonCtrl,
-                                                                  minLines: 3,
-                                                                  maxLines: 5,
-                                                                  decoration: const InputDecoration(
-                                                                    border: OutlineInputBorder(),
-                                                                    filled: true,
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                            actions: [
-                                                              TextButton(
-                                                                onPressed: () => Navigator.pop(ctx, false),
-                                                                child: const Text('Cancel'),
-                                                              ),
-                                                              TextButton(
-                                                                onPressed: () => Navigator.pop(ctx, true),
-                                                                child: const Text('Reject', style: TextStyle(color: Colors.red)),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        );
-                                                        if (confirmed == true && mounted) {
-                                                          await _updateStatus(id, 'rejected', rejectReason: reasonCtrl.text.trim());
-                                                        }
-                                                      },
+                                                    const SizedBox(height: 6),
+                                                    Text(
+                                                      description,
+                                                      style: TextStyle(fontSize: 13.5 * scale),
+                                                      maxLines: 3,
+                                                      overflow: TextOverflow.ellipsis,
                                                     ),
                                                   ],
-                                                  if (status == 'processed' || status == 'rejected')
-                                                    IconButton(
-                                                      icon: SvgPicture.asset(
-                                                        'assets/icons/delete.svg',
-                                                        colorFilter: const ColorFilter.mode(Colors.red, BlendMode.srcIn),
-                                                        width: 28 * scale,
-                                                        height: 28 * scale,
-                                                      ),
-                                                      tooltip: 'Delete',
-                                                      onPressed: isProcessing ? null : () async {
-                                                        final confirmed = await showDialog<bool>(
-                                                          context: context,
-                                                          builder: (ctx) => AlertDialog(
-                                                            title: const Text('Delete Request'),
-                                                            content: const Text('This cannot be undone.'),
-                                                            actions: [
-                                                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                                              TextButton(
-                                                                onPressed: () => Navigator.pop(ctx, true),
-                                                                child: const Text('Delete', style: TextStyle(color: Colors.red)),
-                                                              ),
-                                                            ],
+                                                  const Spacer(),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.end,
+                                                    children: [
+                                                      if (status == 'pending') ...[
+                                                        IconButton(
+                                                          icon: SvgPicture.asset(
+                                                            'assets/icons/check_circle.svg',
+                                                            colorFilter: const ColorFilter.mode(Colors.green, BlendMode.srcIn),
+                                                            width: 28 * scale,
+                                                            height: 28 * scale,
                                                           ),
-                                                        );
-                                                        if (confirmed == true && mounted) {
-                                                          try {
-                                                            await Supabase.instance.client
-                                                                .from('download_requests')
-                                                                .delete()
-                                                                .eq('id', id);
-                                                            setState(() {
-                                                              _requests.removeWhere((r) => r['id'] == id);
-                                                              _selectedIds.remove(id);
-                                                            });
-                                                            ScaffoldMessenger.of(context).showSnackBar(
-                                                              const SnackBar(content: Text('Request deleted'), backgroundColor: AppTheme.hkmuGreen),
+                                                          tooltip: 'Mark as Processed',
+                                                          onPressed: isProcessing ? null : () => _updateStatus(id, 'processed'),
+                                                        ),
+                                                        IconButton(
+                                                          icon: const Icon(Icons.cancel, color: Colors.red),
+                                                          iconSize: 28 * scale,
+                                                          tooltip: 'Reject',
+                                                          onPressed: isProcessing ? null : () async {
+                                                            final reasonCtrl = TextEditingController();
+                                                            final confirmed = await showDialog<bool>(
+                                                              context: context,
+                                                              builder: (ctx) => AlertDialog(
+                                                                title: const Text('Reject Request'),
+                                                                content: Column(
+                                                                  mainAxisSize: MainAxisSize.min,
+                                                                  children: [
+                                                                    const Text('Reason for rejection:'),
+                                                                    const SizedBox(height: 12),
+                                                                    TextField(
+                                                                      controller: reasonCtrl,
+                                                                      minLines: 3,
+                                                                      maxLines: 5,
+                                                                      decoration: const InputDecoration(
+                                                                        border: OutlineInputBorder(),
+                                                                        filled: true,
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                ),
+                                                                actions: [
+                                                                  TextButton(
+                                                                    onPressed: () => Navigator.pop(ctx, false),
+                                                                    child: const Text('Cancel'),
+                                                                  ),
+                                                                  TextButton(
+                                                                    onPressed: () => Navigator.pop(ctx, true),
+                                                                    child: const Text('Reject', style: TextStyle(color: Colors.red)),
+                                                                  ),
+                                                                ],
+                                                              ),
                                                             );
-                                                          } catch (e) {
-                                                            ScaffoldMessenger.of(context).showSnackBar(
-                                                              const SnackBar(content: Text('Failed to delete'), backgroundColor: Colors.red),
+                                                            if (confirmed == true && mounted) {
+                                                              await _updateStatus(id, 'rejected', rejectReason: reasonCtrl.text.trim());
+                                                            }
+                                                          },
+                                                        ),
+                                                      ],
+                                                      if (status == 'processed' || status == 'rejected')
+                                                        IconButton(
+                                                          icon: SvgPicture.asset(
+                                                            'assets/icons/delete.svg',
+                                                            colorFilter: const ColorFilter.mode(Colors.red, BlendMode.srcIn),
+                                                            width: 28 * scale,
+                                                            height: 28 * scale,
+                                                          ),
+                                                          tooltip: 'Delete',
+                                                          onPressed: isProcessing ? null : () async {
+                                                            final confirmed = await showDialog<bool>(
+                                                              context: context,
+                                                              builder: (ctx) => AlertDialog(
+                                                                title: const Text('Delete Request'),
+                                                                content: const Text('This cannot be undone.'),
+                                                                actions: [
+                                                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                                                  TextButton(
+                                                                    onPressed: () => Navigator.pop(ctx, true),
+                                                                    child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                                                  ),
+                                                                ],
+                                                              ),
                                                             );
-                                                          }
-                                                        }
-                                                      },
-                                                    ),
+                                                            if (confirmed == true && mounted) {
+                                                              try {
+                                                                await Supabase.instance.client
+                                                                    .from('download_requests')
+                                                                    .delete()
+                                                                    .eq('id', id);
+                                                                setState(() {
+                                                                  _requests.removeWhere((r) => r['id'] == id);
+                                                                  _selectedIds.remove(id);
+                                                                });
+                                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                                  const SnackBar(content: Text('Request deleted'), backgroundColor: AppTheme.hkmuGreen),
+                                                                );
+                                                              } catch (e) {
+                                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                                  const SnackBar(content: Text('Failed to delete'), backgroundColor: Colors.red),
+                                                                );
+                                                              }
+                                                            }
+                                                          },
+                                                        ),
+                                                    ],
+                                                  ),
                                                 ],
                                               ),
-                                            ],
-                                          ),
-                                        ),
+                                            ),
+                                          );
+                                        },
                                       );
                                     },
                                   );
                                 },
-                              );
-                            },
-                          ),
-          ),
-          if (_processingRequests.isNotEmpty)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black.withOpacity(0.3),
-                child: const Center(child: CircularProgressIndicator()),
+                              ),
               ),
+            ],
+          ),
+        ),
+        if (_processingRequests.isNotEmpty)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withOpacity(0.3),
+              child: const Center(child: CircularProgressIndicator()),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }
