@@ -443,7 +443,7 @@ class _CartScreenState extends State<CartScreen> {
             title: Text('Request Download Links', style: theme.textTheme.titleLarge),
             content: Text(
               'We will prepare download links for the selected models.\n\n'
-              'The links will be sent to your registered email address.',
+              'Your request will be sent to admin staff.',
               style: theme.textTheme.bodyMedium,
             ),
             actions: [

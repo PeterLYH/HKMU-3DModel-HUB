@@ -6,7 +6,6 @@ import 'dart:convert';
 // ignore: deprecated_member_use, avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 
-import 'package:emailjs/emailjs.dart' as emailjs;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -1137,7 +1136,7 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
                         Supabase.instance.client.storage.from('3d-models').getPublicUrl(model['thumbnail_path']),
                         height: 220,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
+                        errorBuilder: (_, _, _) => Container(
                           height: 220,
                           color: Colors.grey[300],
                           child: const Icon(Icons.image_not_supported, size: 80),
@@ -1252,7 +1251,7 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
 
       if (newModelFile != null) {
-        final uniqueName = '${timestamp}_model_${newModelFileName}';
+        final uniqueName = '${timestamp}_model_$newModelFileName';
         newModelPath = 'models/${model['user_id']}/$uniqueName';
         await Supabase.instance.client.storage
             .from('3d-models')
@@ -1262,7 +1261,7 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
       }
 
       if (newThumbnailFile != null) {
-        final uniqueName = '${timestamp}_thumb_${newThumbnailFileName}';
+        final uniqueName = '${timestamp}_thumb_$newThumbnailFileName';
         newThumbPath = 'models/${model['user_id']}/$uniqueName';
         await Supabase.instance.client.storage
             .from('3d-models')
@@ -1679,46 +1678,6 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
 }
 
 // ==================== DOWNLOAD REQUESTS MANAGEMENT TAB ====================
-const String emailjsServiceId = 'service_fbj4ijv';
-const String emailjsPublicKey = '_bhZrWri1RJ_HqbnP';
-const String emailjsPrivateKey = '8Gn3g6qpsHxf3ZDk3BzBm';
-const String templateProcessed = 'template_l1m3ofj';
-const String templateRejected = 'template_qigszyj';
-
-Future<bool> sendRequestStatusEmail({
-  required String toEmail,
-  required String userName,
-  required String status,
-  String? rejectReason,
-  List<String> modelNames = const [],
-  String? downloadUrl,
-}) async {
-  try {
-    final template = status == 'processed' ? templateProcessed : templateRejected;
-    final templateParams = {
-      'user_name': userName.isNotEmpty ? userName : 'User',
-      'email': toEmail,
-      'model_list': modelNames.isEmpty ? '—' : '• ${modelNames.join('\n• ')}',
-      if (status == 'rejected') 'reason': rejectReason ?? 'Not specified',
-      'status': status.toUpperCase(),
-      if (status == 'processed' && downloadUrl != null) 'download_url': downloadUrl,
-      if (status == 'processed' && downloadUrl != null) 'download_button_text': 'Download Your Models Now',
-    };
-    await emailjs.send(
-      emailjsServiceId,
-      template,
-      templateParams,
-      emailjs.Options(
-        publicKey: emailjsPublicKey,
-        privateKey: emailjsPrivateKey,
-      ),
-    );
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
-
 class DownloadRequestsTab extends StatefulWidget {
   const DownloadRequestsTab({super.key});
 
@@ -1765,11 +1724,13 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
           ''')
           .order('created_at', ascending: false);
       final List<Map<String, dynamic>> requests = List.from(requestsResp);
+
       final Set<String> allModelIds = {};
       for (final req in requests) {
         final ids = (req['model_ids'] as List?)?.cast<String>() ?? [];
         allModelIds.addAll(ids);
       }
+
       Map<String, String> modelNameMap = {};
       if (allModelIds.isNotEmpty) {
         final modelsResp = await Supabase.instance.client
@@ -1780,10 +1741,12 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
           for (final m in modelsResp) m['id'] as String: (m['name'] as String? ?? 'Untitled').trim(),
         };
       }
+
       for (final req in requests) {
         final ids = (req['model_ids'] as List?)?.cast<String>() ?? [];
         req['model_names'] = ids.map((id) => modelNameMap[id] ?? 'Model-$id').toList();
       }
+
       setState(() {
         _requests = requests;
         _loading = false;
@@ -1860,9 +1823,11 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
     setState(() {
       _processingRequests[id] = true;
     });
+
     try {
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) throw 'Not authenticated';
+
       final updateData = <String, dynamic>{
         'status': newStatus,
         'updated_at': DateTime.now().toIso8601String(),
@@ -1871,66 +1836,109 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
       if (newStatus == 'rejected') {
         updateData['reject_reason'] = rejectReason?.isNotEmpty == true ? rejectReason : null;
       }
+
       await Supabase.instance.client
           .from('download_requests')
           .update(updateData)
           .eq('id', id);
 
       final req = _requests.firstWhere((r) => r['id'] == id);
+
+      String displayName = 'User';
+      final userId = req['user_id'] as String?;
+
+      if (userId != null && userId.isNotEmpty) {
+        try {
+          final userResp = await Supabase.instance.client
+              .from('users')
+              .select('nickname')
+              .eq('userid', userId)
+              .maybeSingle();
+
+          if (userResp != null) {
+            final nickname = userResp['nickname'] as String?;
+            if (nickname != null && nickname.trim().isNotEmpty) {
+              displayName = nickname.trim();
+            } else {
+              debugPrint('Nickname is empty or null for user: $userId');
+            }
+          } else {
+            debugPrint('No user found with userid: $userId');
+          }
+        } catch (fetchErr) {
+          debugPrint('Failed to fetch nickname: $fetchErr');
+        }
+      }
+
       String message = newStatus == 'processed'
-          ? 'Request processed – ZIP download started'
-          : 'Request marked as rejected${rejectReason?.isNotEmpty == true ? ' with reason' : ''}';
+          ? 'Request processed'
+          : 'Request rejected${rejectReason?.isNotEmpty == true ? ' with reason' : ''}';
 
       if (newStatus == 'processed') {
         final filePaths = await _getModelFilePaths(id);
         if (filePaths.isNotEmpty) {
-          final session = Supabase.instance.client.auth.currentSession;
-          if (session == null) throw 'Not authenticated';
-          final response = await http.post(
-            Uri.parse('https://mygplwghoudapvhdcrke.supabase.co/functions/v1/zip-models'),
-            headers: {
-              'Authorization': 'Bearer ${session.accessToken}',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({'filePaths': filePaths}),
-          );
+          try {
+            final session = Supabase.instance.client.auth.currentSession;
+            if (session == null) throw 'No active session';
 
-          if (response.statusCode == 200) {
-            final bytes = response.bodyBytes;
-
-            if (bytes.length < 4 ||
-                bytes[0] != 0x50 ||
-                bytes[1] != 0x4B ||
-                bytes[2] != 0x03 ||
-                bytes[3] != 0x04) {
-              throw 'Response does not appear to be a valid ZIP file';
-            }
-
-            final blob = html.Blob([bytes], 'application/zip');
-            final url = html.Url.createObjectUrlFromBlob(blob);
-
-            final fileName = 'hkmu-request-$id-${DateTime.now().toIso8601String().substring(0, 10)}.zip';
-
-            html.AnchorElement(href: url)
-              ..setAttribute('download', fileName)
-              ..style.display = 'none'
-              ..click();
-
-            html.Url.revokeObjectUrl(url);
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('ZIP downloaded (${filePaths.length} models)'),
-                backgroundColor: AppTheme.hkmuGreen,
-              ),
+            final response = await http.post(
+              Uri.parse('https://mygplwghoudapvhdcrke.supabase.co/functions/v1/zip-models'),
+              headers: {
+                'Authorization': 'Bearer ${session.accessToken}',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({'filePaths': filePaths}),
             );
-          } else {
-            throw 'ZIP creation failed: ${response.statusCode} – ${response.body}';
+
+            if (response.statusCode == 200) {
+              final bytes = response.bodyBytes;
+
+              if (bytes.length >= 4 &&
+                  bytes[0] == 0x50 &&
+                  bytes[1] == 0x4B &&
+                  bytes[2] == 0x03 &&
+                  bytes[3] == 0x04) {
+                final blob = html.Blob([bytes], 'application/zip');
+                final url = html.Url.createObjectUrlFromBlob(blob);
+
+                final fileName =
+                    'hkmu-request-$id-${DateTime.now().toIso8601String().substring(0, 10)}.zip';
+
+                html.AnchorElement(href: url)
+                  ..setAttribute('download', fileName)
+                  ..style.display = 'none'
+                  ..click();
+
+                html.Url.revokeObjectUrl(url);
+
+                message += ' – ZIP downloaded (${filePaths.length} models)';
+              } else {
+                message += ' – ZIP created but invalid format';
+              }
+            } else {
+              message += ' – ZIP creation failed (${response.statusCode})';
+            }
+          } catch (zipErr) {
+            message += ' – ZIP error: $zipErr';
           }
         } else {
-          message = 'Processed, but no files available to download';
+          message += ' – no files available';
         }
       }
+
+      final edgeResponse = await http.post(
+        Uri.parse('https://mygplwghoudapvhdcrke.supabase.co/functions/v1/send-request-status-email'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'toEmail': req['email'] as String? ?? 'unknown@email.com',
+          'userName': displayName,
+          'status': newStatus,
+          'rejectReason': rejectReason,
+          'modelNames': (req['model_names'] as List?)?.cast<String>() ?? [],
+        }),
+      );
+
+      final emailSuccess = edgeResponse.statusCode == 200;
 
       setState(() {
         req['status'] = newStatus;
@@ -1942,17 +1950,24 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
       });
 
       if (mounted) {
+        final snackText = emailSuccess
+            ? '$message – email sent'
+            : '$message – email failed';
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(message),
-            backgroundColor: AppTheme.hkmuGreen,
+            content: Text(snackText),
+            backgroundColor: emailSuccess ? AppTheme.hkmuGreen : Colors.orange[800],
           ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -1972,6 +1987,7 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
         .map((r) => r['id'] as String)
         .toList();
     if (toDelete.isEmpty) return;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1988,19 +2004,23 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
       ),
     );
     if (confirmed != true) return;
+
     for (final id in toDelete) {
       setState(() => _processingRequests[id] = true);
     }
+
     try {
       await Supabase.instance.client
           .from('download_requests')
           .delete()
           .inFilter('id', toDelete);
+
       setState(() {
         _requests.removeWhere((r) => toDelete.contains(r['id']));
         _selectedIds.removeAll(toDelete.toSet());
         _selectAll = false;
       });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${toDelete.length} requests deleted'), backgroundColor: AppTheme.hkmuGreen),
