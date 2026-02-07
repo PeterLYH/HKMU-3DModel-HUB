@@ -1,58 +1,16 @@
-// lib/screens/cart_screen.dart
-
 // ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:emailjs/emailjs.dart' as emailjs;
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 import '../providers/cart_provider.dart';
 import '../styles/styles.dart';
 import '../core/widgets/header.dart';
-
-const String confirmationServiceId = 'service_81tie0k';
-const String confirmationTemplateId = 'template_alvxwce';
-const String emailjsPublicKey = 'gYEQnNnjea-qVcEVe';
-const String emailjsPrivateKey = 'ny3v8WRBmB9XW7UWCvXf0';
-
-Future<bool> sendRequestConfirmationEmail({
-  required String toEmail,
-  required String userName,
-  required List<String> modelNames,
-  required String description,
-}) async {
-  try {
-    final templateParams = {
-      'user_name': userName.isNotEmpty ? userName : 'User',
-      'email': toEmail,
-      'model_list': modelNames.isEmpty ? '—' : '• ${modelNames.join('\n• ')}',
-      'model_count': modelNames.length.toString(),
-      'description': description.isNotEmpty ? description : 'No description provided',
-      'request_date': DateTime.now().toString().substring(0, 16),
-    };
-
-    await emailjs.send(
-      confirmationServiceId,
-      confirmationTemplateId,
-      templateParams,
-      emailjs.Options(
-        publicKey: emailjsPublicKey,
-        privateKey: emailjsPrivateKey,
-      ),
-    );
-
-    debugPrint('Confirmation email sent successfully to $toEmail');
-    return true;
-  } catch (error) {
-    debugPrint('Confirmation email send failed: $error');
-    if (error is emailjs.EmailJSResponseStatus) {
-      debugPrint('→ Status: ${error.status}, Text: ${error.text}');
-    }
-    return false;
-  }
-}
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -66,6 +24,7 @@ class _CartScreenState extends State<CartScreen> {
 
   final _descriptionController = TextEditingController();
   String? _descriptionError;
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -115,51 +74,79 @@ class _CartScreenState extends State<CartScreen> {
     return Scaffold(
       appBar: const Header(),
       backgroundColor: theme.scaffoldBackgroundColor,
-      body: cartProvider.isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.hkmuGreen))
-          : FutureBuilder<List<Map<String, dynamic>>>(
-              future: _modelsFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: AppTheme.hkmuGreen));
-                }
+      body: Stack(
+        children: [
+          cartProvider.isLoading
+              ? const Center(child: CircularProgressIndicator(color: AppTheme.hkmuGreen))
+              : FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _modelsFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: AppTheme.hkmuGreen));
+                    }
 
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Text(
-                        'Error loading cart items\n${snapshot.error}',
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24.0),
+                          child: Text(
+                            'Error loading cart items\n${snapshot.error}',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.titleMedium?.copyWith(color: Colors.redAccent),
+                          ),
+                        ),
+                      );
+                    }
+
+                    final models = snapshot.data ?? [];
+
+                    if (models.isEmpty && !_isSubmitting) {
+                      return _buildEmptyCart(context, theme);
+                    }
+
+                    return Column(
+                      children: [
+                        Expanded(
+                          child: ListView.builder(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: models.length,
+                            itemBuilder: (context, index) {
+                              final model = models[index];
+                              return _buildModelCard(context, model, cartProvider, theme);
+                            },
+                          ),
+                        ),
+                        _buildBottomSection(context, cartProvider, theme, models),
+                      ],
+                    );
+                  },
+                ),
+          if (_isSubmitting)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withOpacity(0.5),
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: AppTheme.hkmuGreen),
+                      SizedBox(height: 24),
+                      Text(
+                        'Submitting request...\nPlease wait',
                         textAlign: TextAlign.center,
-                        style: theme.textTheme.titleMedium?.copyWith(color: Colors.redAccent),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                  );
-                }
-
-                final models = snapshot.data ?? [];
-
-                if (models.isEmpty && !cartProvider.isLoading) {
-                  return _buildEmptyCart(context, theme);
-                }
-
-                return Column(
-                  children: [
-                    Expanded(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: models.length,
-                        itemBuilder: (context, index) {
-                          final model = models[index];
-                          return _buildModelCard(context, model, cartProvider, theme);
-                        },
-                      ),
-                    ),
-                    _buildBottomSection(context, cartProvider, theme, models),
-                  ],
-                );
-              },
+                    ],
+                  ),
+                ),
+              ),
             ),
+        ],
+      ),
     );
   }
 
@@ -215,21 +202,29 @@ class _CartScreenState extends State<CartScreen> {
             width: double.infinity,
             height: 76,
             child: ElevatedButton.icon(
-              onPressed: cartProvider.itemCount == 0 || cartProvider.isLoading
+              onPressed: cartProvider.itemCount == 0 || cartProvider.isLoading || _isSubmitting
                   ? null
                   : () async {
-                      setState(() => _descriptionError = null);
+                      setState(() {
+                        _descriptionError = null;
+                        _isSubmitting = true;
+                      });
+
                       final desc = _descriptionController.text.trim();
 
                       if (desc.isEmpty) {
                         setState(() {
                           _descriptionError = 'Please add a short description';
+                          _isSubmitting = false;
                         });
                         return;
                       }
 
                       final confirmed = await _showConfirmDialog(context, theme);
-                      if (!confirmed || !mounted) return;
+                      if (!confirmed || !mounted) {
+                        setState(() => _isSubmitting = false);
+                        return;
+                      }
 
                       final router = GoRouter.of(context);
 
@@ -237,47 +232,113 @@ class _CartScreenState extends State<CartScreen> {
                         description: desc,
                       );
 
-                      if (!mounted) return;
+                      if (!mounted) {
+                        setState(() => _isSubmitting = false);
+                        return;
+                      }
 
                       if (result['success'] == true) {
-                        // Send confirmation email using loaded models
-                        final user = Supabase.instance.client.auth.currentUser;
-                        final userEmail = user?.email ?? '';
-                        final userName = userEmail.split('@').first.trim();
-
-                        final modelNames = models
-                            .map((m) => (m['name'] as String?)?.trim() ?? 'Untitled Model')
-                            .toList();
-
-                        final emailSent = await sendRequestConfirmationEmail(
-                          toEmail: userEmail,
-                          userName: userName,
-                          modelNames: modelNames,
-                          description: desc,
-                        );
-
-                        if (!emailSent && mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Request submitted, but confirmation email could not be sent',
-                              ),
-                              backgroundColor: Colors.orange,
-                              duration: Duration(seconds: 5),
-                            ),
-                          );
+                        if (mounted) {
+                          SchedulerBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) {
+                              router.go('/request-success');
+                            }
+                          });
                         }
 
-                        // Navigate to success screen
-                        SchedulerBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) {
-                            router.go('/request-success');
-                          }
-                        });
+                        final currentUser = Supabase.instance.client.auth.currentUser;
+                        String userEmail = currentUser?.email ?? '';
+                        String userName = 'User';
 
-                        // Clean up
-                        cartProvider.clearCart();
-                        _descriptionController.clear();
+                        if (currentUser != null && currentUser.id.isNotEmpty) {
+                          try {
+                            final userData = await Supabase.instance.client
+                                .from('users')
+                                .select('nickname, username, email')
+                                .eq('userid', currentUser.id)
+                                .maybeSingle();
+
+                            if (userData != null) {
+                              final nickname = userData['nickname'] as String?;
+                              if (nickname != null && nickname.trim().isNotEmpty) {
+                                userName = nickname.trim();
+                              } else {
+                                final username = userData['username'] as String?;
+                                if (username != null && username.trim().isNotEmpty) {
+                                  userName = username.trim();
+                                }
+                              }
+
+                              if (userName == 'User') {
+                                final dbEmail = userData['email'] as String?;
+                                if (dbEmail != null && dbEmail.contains('@')) {
+                                  final prefix = dbEmail.split('@').first.trim();
+                                  if (prefix.isNotEmpty) {
+                                    userName = prefix;
+                                  }
+                                }
+                              }
+                            }
+                          } catch (_) {}
+
+                          if (userName == 'User' && userEmail.isNotEmpty && userEmail.contains('@')) {
+                            final prefix = userEmail.split('@').first.trim();
+                            if (prefix.isNotEmpty) {
+                              userName = prefix;
+                            }
+                          }
+                        }
+
+                        if (userEmail.isNotEmpty) {
+                          final modelNames = models
+                              .map((m) => (m['name'] as String?)?.trim() ?? 'Untitled Model')
+                              .toList();
+
+                          try {
+                            var session = Supabase.instance.client.auth.currentSession;
+
+                            if (session == null || session.isExpired) {
+                              final refreshed = await Supabase.instance.client.auth.refreshSession();
+                              session = refreshed.session;
+                              if (session == null) {
+                                throw 'Cannot refresh session';
+                              }
+                            }
+
+                            final response = await http.post(
+                              Uri.parse('https://mygplwghoudapvhdcrke.supabase.co/functions/v1/send-request-confirmation'),
+                              headers: {
+                                'Authorization': 'Bearer ${session.accessToken}',
+                                'Content-Type': 'application/json',
+                              },
+                              body: jsonEncode({
+                                'toEmail': userEmail,
+                                'userName': userName,
+                                'modelNames': modelNames,
+                                'description': desc,
+                              }),
+                            );
+
+                            if (response.statusCode != 200) {
+                              throw 'Confirmation email failed (status: ${response.statusCode})';
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Request submitted, but confirmation email could not be sent.\n$e'),
+                                  backgroundColor: Colors.orange,
+                                  duration: const Duration(seconds: 6),
+                                ),
+                              );
+                            }
+                          }
+                        }
+
+                        Future.delayed(const Duration(milliseconds: 300), () {
+                          cartProvider.clearCart();
+                          _descriptionController.clear();
+                        });
                       } else if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -286,6 +347,10 @@ class _CartScreenState extends State<CartScreen> {
                             duration: const Duration(seconds: 4),
                           ),
                         );
+                      }
+
+                      if (mounted) {
+                        setState(() => _isSubmitting = false);
                       }
                     },
               icon: const Icon(Icons.send),
@@ -407,7 +472,7 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${model['categories'] ?? '—'} • ${model['file_type'] ?? '—'}',
+                    '${(model['categories'] as List<dynamic>?)?.join(', ') ?? '—'} • ${model['file_type'] ?? '—'}',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
                     ),

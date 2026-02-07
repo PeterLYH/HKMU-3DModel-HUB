@@ -1814,6 +1814,55 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
     }
   }
 
+  Future<String> _getUserDisplayName(String userId, String fallbackEmail) async {
+    String displayName = 'User';
+
+    if (userId.isEmpty) {
+      if (fallbackEmail.isNotEmpty && fallbackEmail.contains('@')) {
+        final prefix = fallbackEmail.split('@').first.trim();
+        if (prefix.isNotEmpty) displayName = prefix;
+      }
+      return displayName;
+    }
+
+    try {
+      final userData = await Supabase.instance.client
+          .from('users')
+          .select('nickname, username, email')
+          .eq('userid', userId)
+          .maybeSingle();
+
+      if (userData != null) {
+        final nickname = userData['nickname'] as String?;
+        if (nickname != null && nickname.trim().isNotEmpty) {
+          return nickname.trim();
+        }
+
+        final username = userData['username'] as String?;
+        if (username != null && username.trim().isNotEmpty) {
+          return username.trim();
+        }
+
+        final dbEmail = userData['email'] as String?;
+        if (dbEmail != null && dbEmail.contains('@')) {
+          final prefix = dbEmail.split('@').first.trim();
+          if (prefix.isNotEmpty) {
+            return prefix;
+          }
+        }
+      }
+    } catch (_) {}
+
+    if (fallbackEmail.isNotEmpty && fallbackEmail.contains('@')) {
+      final prefix = fallbackEmail.split('@').first.trim();
+      if (prefix.isNotEmpty) {
+        displayName = prefix;
+      }
+    }
+
+    return displayName;
+  }
+
   Future<void> _updateStatus(
     String id,
     String newStatus, {
@@ -1844,35 +1893,16 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
 
       final req = _requests.firstWhere((r) => r['id'] == id);
 
-      String displayName = 'User';
-      final userId = req['user_id'] as String?;
+      final userId = req['user_id'] as String? ?? '';
+      final reqEmail = req['email'] as String? ?? '';
 
-      if (userId != null && userId.isNotEmpty) {
-        try {
-          final userResp = await Supabase.instance.client
-              .from('users')
-              .select('nickname')
-              .eq('userid', userId)
-              .maybeSingle();
-
-          if (userResp != null) {
-            final nickname = userResp['nickname'] as String?;
-            if (nickname != null && nickname.trim().isNotEmpty) {
-              displayName = nickname.trim();
-            } else {
-              debugPrint('Nickname is empty or null for user: $userId');
-            }
-          } else {
-            debugPrint('No user found with userid: $userId');
-          }
-        } catch (fetchErr) {
-          debugPrint('Failed to fetch nickname: $fetchErr');
-        }
-      }
+      final displayName = await _getUserDisplayName(userId, reqEmail);
 
       String message = newStatus == 'processed'
           ? 'Request processed'
           : 'Request rejected${rejectReason?.isNotEmpty == true ? ' with reason' : ''}';
+
+      bool actionSuccess = true;
 
       if (newStatus == 'processed') {
         final filePaths = await _getModelFilePaths(id);
@@ -1914,31 +1944,41 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
                 message += ' – ZIP downloaded (${filePaths.length} models)';
               } else {
                 message += ' – ZIP created but invalid format';
+                actionSuccess = false;
               }
             } else {
               message += ' – ZIP creation failed (${response.statusCode})';
+              actionSuccess = false;
             }
           } catch (zipErr) {
-            message += ' – ZIP error: $zipErr';
+            message += ' – ZIP error';
+            actionSuccess = false;
           }
         } else {
           message += ' – no files available';
+          actionSuccess = false;
+        }
+      } else if (newStatus == 'rejected') {
+        try {
+          final edgeResponse = await http.post(
+            Uri.parse('https://mygplwghoudapvhdcrke.supabase.co/functions/v1/send-request-status-email'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'toEmail': req['email'] as String? ?? 'unknown@email.com',
+              'userName': displayName,
+              'status': newStatus,
+              'rejectReason': rejectReason,
+              'modelNames': (req['model_names'] as List?)?.cast<String>() ?? [],
+            }),
+          );
+
+          actionSuccess = edgeResponse.statusCode == 200;
+          message += actionSuccess ? ' – email sent' : ' – email failed';
+        } catch (_) {
+          actionSuccess = false;
+          message += ' – email failed';
         }
       }
-
-      final edgeResponse = await http.post(
-        Uri.parse('https://mygplwghoudapvhdcrke.supabase.co/functions/v1/send-request-status-email'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'toEmail': req['email'] as String? ?? 'unknown@email.com',
-          'userName': displayName,
-          'status': newStatus,
-          'rejectReason': rejectReason,
-          'modelNames': (req['model_names'] as List?)?.cast<String>() ?? [],
-        }),
-      );
-
-      final emailSuccess = edgeResponse.statusCode == 200;
 
       setState(() {
         req['status'] = newStatus;
@@ -1950,14 +1990,10 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
       });
 
       if (mounted) {
-        final snackText = emailSuccess
-            ? '$message – email sent'
-            : '$message – email failed';
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(snackText),
-            backgroundColor: emailSuccess ? AppTheme.hkmuGreen : Colors.orange[800],
+            content: Text(message),
+            backgroundColor: actionSuccess ? AppTheme.hkmuGreen : Colors.orange[800],
           ),
         );
       }
@@ -1980,13 +2016,23 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
   }
 
   Future<void> _batchDeleteProcessedOrRejected() async {
-    final toDelete = _requests
-        .where((r) =>
-            (r['status'] == 'processed' || r['status'] == 'rejected') &&
-            _selectedIds.contains(r['id']))
+    final toDelete = _filteredRequests
+        .where((r) => _selectedIds.contains(r['id'] as String))
+        .where((r) => r['status'] == 'processed' || r['status'] == 'rejected')
         .map((r) => r['id'] as String)
         .toList();
-    if (toDelete.isEmpty) return;
+
+    if (toDelete.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No processed or rejected requests selected'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -2003,11 +2049,14 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
         ],
       ),
     );
-    if (confirmed != true) return;
 
-    for (final id in toDelete) {
-      setState(() => _processingRequests[id] = true);
-    }
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      for (final id in toDelete) {
+        _processingRequests[id] = true;
+      }
+    });
 
     try {
       await Supabase.instance.client
@@ -2016,20 +2065,26 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
           .inFilter('id', toDelete);
 
       setState(() {
-        _requests.removeWhere((r) => toDelete.contains(r['id']));
+        _requests.removeWhere((r) => toDelete.contains(r['id'] as String));
         _selectedIds.removeAll(toDelete.toSet());
         _selectAll = false;
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${toDelete.length} requests deleted'), backgroundColor: AppTheme.hkmuGreen),
+          SnackBar(
+            content: Text('${toDelete.length} requests deleted successfully'),
+            backgroundColor: AppTheme.hkmuGreen,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to delete requests'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Failed to delete requests: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -2390,6 +2445,7 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
                                                                 setState(() {
                                                                   _requests.removeWhere((r) => r['id'] == id);
                                                                   _selectedIds.remove(id);
+                                                                  _selectAll = false;
                                                                 });
                                                                 ScaffoldMessenger.of(context).showSnackBar(
                                                                   const SnackBar(content: Text('Request deleted'), backgroundColor: AppTheme.hkmuGreen),
@@ -2418,7 +2474,7 @@ class _DownloadRequestsTabState extends State<DownloadRequestsTab> {
             ],
           ),
         ),
-        if (_processingRequests.isNotEmpty)
+        if (_processingRequests.isNotEmpty || _loading)
           Positioned.fill(
             child: Container(
               color: Colors.black.withOpacity(0.3),
