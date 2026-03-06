@@ -845,6 +845,9 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
   final Set<String> _selectedModelIds = {};
   bool _selectAllModels = false;
   bool _isCreatingZip = false;
+  List<Map<String, dynamic>> _categories = [];
+  bool _categoriesLoading = false;
+
   static const String _zipFunctionUrl = 'https://mygplwghoudapvhdcrke.supabase.co/functions/v1/zip-models';
 
   @override
@@ -890,6 +893,34 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to load models.'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadCategories() async {
+    setState(() {
+      _categoriesLoading = true;
+    });
+    try {
+      final response = await Supabase.instance.client
+          .from('categories')
+          .select('id, name, created_at')
+          .order('name', ascending: true);
+      setState(() {
+        _categories = List<Map<String, dynamic>>.from(response);
+        _categoriesLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _categoriesLoading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load categories: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -976,9 +1007,7 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
       );
       return;
     }
-
     setState(() => _isCreatingZip = true);
-
     try {
       final session = Supabase.instance.client.auth.currentSession;
       if (session == null) throw 'Not authenticated';
@@ -993,26 +1022,22 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
       if (response.statusCode != 200) {
         throw 'Server error: ${response.statusCode} - ${response.body}';
       }
-
       final bytes = response.bodyBytes;
       if (bytes.length < 4 || bytes[0] != 0x50 || bytes[1] != 0x4B || bytes[2] != 0x03 || bytes[3] != 0x04) {
         throw 'Response does not appear to be a valid ZIP file';
       }
-
       final blob = html.Blob([bytes], 'application/zip');
       final url = html.Url.createObjectUrlFromBlob(blob);
       html.AnchorElement(href: url)
         ..setAttribute('download', 'models-${DateTime.now().toIso8601String().substring(0, 10)}.zip')
         ..click();
       html.Url.revokeObjectUrl(url);
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Downloaded ${filePaths.length} models as ZIP file'),
           backgroundColor: AppTheme.hkmuGreen,
         ),
       );
-
       setState(() {
         _selectedModelIds.clear();
         _selectAllModels = false;
@@ -1034,7 +1059,6 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
     final sourceController = TextEditingController(text: model['source'] ?? 'HKMU');
     final licenseController = TextEditingController(text: model['license_type'] ?? 'Non-commercial');
     final ackController = TextEditingController(text: model['acknowledgement'] ?? '');
-
     List<Map<String, dynamic>> allCategories = [];
     try {
       final response = await Supabase.instance.client
@@ -1049,7 +1073,6 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
         );
       }
     }
-
     final currentCats = (model['categories'] as List<dynamic>?)?.cast<String>() ?? [];
     final Set<int> selectedCategoryIds = {};
     for (final cat in allCategories) {
@@ -1059,12 +1082,10 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
         selectedCategoryIds.add(catId);
       }
     }
-
     PlatformFile? newModelFile;
     String? newModelFileName;
     PlatformFile? newThumbnailFile;
     String? newThumbnailFileName;
-
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -1228,15 +1249,12 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
         ),
       ),
     );
-
     if (result != true) return;
-
     try {
       final selectedNames = allCategories
           .where((cat) => selectedCategoryIds.contains(cat['id'] as int))
           .map((cat) => cat['name'] as String)
           .toList();
-
       Map<String, dynamic> updates = {
         'name': nameController.text.trim(),
         'description': descController.text.trim(),
@@ -1245,11 +1263,9 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
         'acknowledgement': ackController.text.trim().isEmpty ? null : ackController.text.trim(),
         'categories': selectedNames,
       };
-
       String? newModelPath;
       String? newThumbPath;
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-
       if (newModelFile != null) {
         final uniqueName = '${timestamp}_model_$newModelFileName';
         newModelPath = 'models/${model['user_id']}/$uniqueName';
@@ -1259,7 +1275,6 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
         updates['file_path'] = newModelPath;
         updates['file_type'] = '.${newModelFileName!.split('.').last.toUpperCase()}';
       }
-
       if (newThumbnailFile != null) {
         final uniqueName = '${timestamp}_thumb_$newThumbnailFileName';
         newThumbPath = 'models/${model['user_id']}/$uniqueName';
@@ -1268,13 +1283,10 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
             .uploadBinary(newThumbPath, newThumbnailFile!.bytes!);
         updates['thumbnail_path'] = newThumbPath;
       }
-
       await Supabase.instance.client.from('models').update(updates).eq('id', model['id']);
-
       setState(() {
         model.addAll(updates);
       });
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Model updated successfully'), backgroundColor: AppTheme.hkmuGreen),
@@ -1363,6 +1375,331 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
     }
   }
 
+Widget _buildCategoriesDialog(BuildContext dialogContext) {
+  final nameController = TextEditingController();
+
+  return StatefulBuilder(
+    builder: (context, setDialogState) => AlertDialog(
+      title: Row(
+        children: [
+          SvgPicture.asset(
+            'assets/icons/category.svg',
+            width: 24,
+            height: 24,
+            colorFilter: const ColorFilter.mode(AppTheme.hkmuGreen, BlendMode.srcIn),
+          ),
+          const SizedBox(width: 12),
+          const Text('Manage Categories'),
+        ],
+      ),
+      content: SizedBox(
+        width: 580,
+        height: 520,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      labelText: 'Category name',
+                      border: const OutlineInputBorder(),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                    ),
+                    textCapitalization: TextCapitalization.words,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                IconButton(
+                  icon: SvgPicture.asset(
+                    'assets/icons/add.svg',
+                    width: 28,
+                    height: 28,
+                    colorFilter: const ColorFilter.mode(AppTheme.hkmuGreen, BlendMode.srcIn),
+                  ),
+                  tooltip: 'Add category',
+                  onPressed: () async {
+                    final name = nameController.text.trim();
+                    if (name.isEmpty) return;
+
+                    try {
+                      final existing = _categories.any(
+                        (c) => (c['name'] as String).toLowerCase() == name.toLowerCase(),
+                      );
+                      if (existing) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          const SnackBar(
+                            content: Text('Category already exists'),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                        return;
+                      }
+
+                      await Supabase.instance.client
+                          .from('categories')
+                          .insert({'name': name});
+
+                      // Refresh categories list automatically
+                      final response = await Supabase.instance.client
+                          .from('categories')
+                          .select('id, name, created_at')
+                          .order('name', ascending: true);
+
+                      setDialogState(() {
+                        _categories = List<Map<String, dynamic>>.from(response);
+                      });
+
+                      nameController.clear();
+
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        SnackBar(
+                          content: Text('Added: $name'),
+                          backgroundColor: AppTheme.hkmuGreen,
+                        ),
+                      );
+                    } catch (e) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        SnackBar(
+                          content: Text('Failed to add: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Expanded(
+              child: _categoriesLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _categories.isEmpty
+                      ? const Center(child: Text('No categories yet'))
+                      : GridView.builder(
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            childAspectRatio: 4.2,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                          ),
+                          itemCount: _categories.length,
+                          itemBuilder: (context, index) {
+                            final cat = _categories[index];
+                            final id = cat['id'] as int;
+                            final name = cat['name'] as String;
+
+                            return Card(
+                              elevation: 1,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        name,
+                                        style: const TextStyle(fontSize: 15),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.edit, color: Colors.blue),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                          onPressed: () async {
+                                            final editCtrl = TextEditingController(text: name);
+                                            final confirmed = await showDialog<bool>(
+                                              context: context,
+                                              builder: (ctx) => AlertDialog(
+                                                title: const Text('Rename Category'),
+                                                content: TextField(
+                                                  controller: editCtrl,
+                                                  decoration: const InputDecoration(
+                                                    labelText: 'New name',
+                                                    border: OutlineInputBorder(),
+                                                  ),
+                                                ),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () => Navigator.pop(ctx, false),
+                                                    child: const Text('Cancel'),
+                                                  ),
+                                                  TextButton(
+                                                    onPressed: () => Navigator.pop(ctx, true),
+                                                    child: const Text(
+                                                      'Save',
+                                                      style: TextStyle(color: AppTheme.hkmuGreen),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+
+                                            if (confirmed != true) return;
+
+                                            final newName = editCtrl.text.trim();
+                                            if (newName.isEmpty || newName == name) return;
+
+                                            try {
+                                              await Supabase.instance.client
+                                                  .from('categories')
+                                                  .update({'name': newName})
+                                                  .eq('id', id);
+
+                                              final modelsToUpdate = await Supabase.instance.client
+                                                  .from('models')
+                                                  .select('id, categories')
+                                                  .contains('categories', [name]);
+
+                                              for (final row in modelsToUpdate) {
+                                                final oldArray = List<String>.from(row['categories'] ?? []);
+                                                final newArray = oldArray.map((item) => item == name ? newName : item).toList();
+
+                                                await Supabase.instance.client
+                                                    .from('models')
+                                                    .update({'categories': newArray})
+                                                    .eq('id', row['id']);
+                                              }
+
+                                              // Auto refresh categories list
+                                              final response = await Supabase.instance.client
+                                                  .from('categories')
+                                                  .select('id, name, created_at')
+                                                  .order('name', ascending: true);
+
+                                              setDialogState(() {
+                                                _categories = List<Map<String, dynamic>>.from(response);
+                                              });
+
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text('Renamed to: $newName (${modelsToUpdate.length} models updated)'),
+                                                  backgroundColor: AppTheme.hkmuGreen,
+                                                ),
+                                              );
+                                            } catch (e) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text('Failed to rename: $e'),
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                              );
+                                            } finally {
+                                              editCtrl.dispose();
+                                            }
+                                          },
+                                        ),
+                                        IconButton(
+                                          icon: SvgPicture.asset(
+                                            'assets/icons/delete.svg',
+                                            width: 24,
+                                            height: 24,
+                                            colorFilter: const ColorFilter.mode(Colors.red, BlendMode.srcIn),
+                                          ),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                          onPressed: () async {
+                                            final confirm = await showDialog<bool>(
+                                              context: context,
+                                              builder: (ctx) => AlertDialog(
+                                                title: const Text('Delete Category'),
+                                                content: Text(
+                                                  'Delete "$name"?\nThis will automatically remove it from all models.',
+                                                ),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () => Navigator.pop(ctx, false),
+                                                    child: const Text('Cancel'),
+                                                  ),
+                                                  TextButton(
+                                                    onPressed: () => Navigator.pop(ctx, true),
+                                                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                                    child: const Text('Delete'),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+
+                                            if (confirm != true) return;
+
+                                            try {
+                                              await Supabase.instance.client
+                                                  .from('categories')
+                                                  .delete()
+                                                  .eq('id', id);
+
+                                              final modelsToUpdate = await Supabase.instance.client
+                                                  .from('models')
+                                                  .select('id, categories')
+                                                  .contains('categories', [name]);
+
+                                              for (final row in modelsToUpdate) {
+                                                final oldArray = List<String>.from(row['categories'] ?? []);
+                                                final newArray = oldArray.where((item) => item != name).toList();
+
+                                                await Supabase.instance.client
+                                                    .from('models')
+                                                    .update({'categories': newArray})
+                                                    .eq('id', row['id']);
+                                              }
+
+                                              // Auto refresh categories list
+                                              final response = await Supabase.instance.client
+                                                  .from('categories')
+                                                  .select('id, name, created_at')
+                                                  .order('name', ascending: true);
+
+                                              setDialogState(() {
+                                                _categories = List<Map<String, dynamic>>.from(response);
+                                              });
+
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text('Deleted: $name (${modelsToUpdate.length} models updated)'),
+                                                  backgroundColor: AppTheme.hkmuGreen,
+                                                ),
+                                              );
+                                            } catch (e) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text('Failed to delete: $e'),
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                              );
+                                            }
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+        contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+      ),
+    );
+  }
+
   List<Map<String, dynamic>> get _filteredModels {
     if (_searchQuery.isEmpty) return _models;
     final query = _searchQuery.toLowerCase();
@@ -1407,7 +1744,32 @@ class _ModelsManagementTabState extends State<ModelsManagementTab> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    icon: SvgPicture.asset(
+                    'assets/icons/category.svg',
+                    width: 20,
+                    height: 20,
+                    colorFilter: const ColorFilter.mode(AppTheme.hkmuGreen, BlendMode.srcIn),
+                  ),
+                  
+                    label: const Text('Edit Categories'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.hkmuGreen,
+                      side: BorderSide(color: AppTheme.hkmuGreen),
+                    ),
+                    onPressed: () async {
+                      await _loadCategories();
+                      if (!mounted) return;
+                      await showDialog(
+                        context: context,
+                        builder: (ctx) => _buildCategoriesDialog(ctx),
+                      );
+                      if (mounted) {
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 12),
                   IconButton(
                     icon: const Icon(Icons.upload_file),
                     tooltip: 'Upload New Model',
