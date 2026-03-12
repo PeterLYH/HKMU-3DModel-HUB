@@ -14,7 +14,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const int _pageSize = 20;
+  static const int _pageSize = 50;
   int _currentPage = 1;
   int _totalModels = 0;
   bool _isLoading = true;
@@ -214,10 +214,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final double screenWidth = MediaQuery.of(context).size.width;
     final bool isMobile = screenWidth < 600;
 
-    int crossAxisCount = 4;
-    if (screenWidth < 1200) crossAxisCount = 3;
-    if (screenWidth < 900) crossAxisCount = 2;
-    if (screenWidth < 600) crossAxisCount = 1;
+    int crossAxisCount = 5;
+    if (screenWidth < 1200) crossAxisCount = 5;
+    if (screenWidth < 900) crossAxisCount = 4;
+    if (screenWidth < 600) crossAxisCount = 2;
 
     return Scaffold(
       appBar: const Header(),
