@@ -15,7 +15,7 @@ void main() async {
   await Supabase.initialize(
     url: SupabaseConfig.url,
     anonKey: SupabaseConfig.anonKey,
-    debug: true,
+    debug: false,
   );
 
   runApp(

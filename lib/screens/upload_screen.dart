@@ -1,11 +1,9 @@
-// upload_screen.dart
-
-// ignore_for_file: use_build_context_synchronously
-
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
 import '../core/widgets/header.dart';
 import '../styles/styles.dart';
 
@@ -18,7 +16,6 @@ class UploadScreen extends StatefulWidget {
 
 class _UploadScreenState extends State<UploadScreen> {
   bool _isUploading = false;
-
   String _uploadMode = 'single';
 
   // Single mode
@@ -85,8 +82,7 @@ class _UploadScreenState extends State<UploadScreen> {
         _modelFile = file;
         _modelFileName = file.name;
         _hasPickedModel = true;
-        final nameWithoutExt = file.name.split('.').first;
-        _nameController.text = nameWithoutExt;
+        _nameController.text = file.name.split('.').first;
       });
     }
   }
@@ -102,7 +98,7 @@ class _UploadScreenState extends State<UploadScreen> {
     if (result != null && result.files.isNotEmpty) {
       setState(() {
         _modelFiles = result.files;
-        _thumbnails = List<PlatformFile?>.filled(result.files.length, null);
+        _thumbnails = List<PlatformFile?>.generate(result.files.length, (index) => null);
       });
     }
   }
@@ -132,6 +128,34 @@ class _UploadScreenState extends State<UploadScreen> {
         _thumbnails[index] = result.files.single;
       });
     }
+  }
+
+  void _removeMultiModel(int index) {
+    final fileName = _modelFiles[index].name;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('確認刪除'),
+        content: Text('確定要刪除 "$fileName" 嗎？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() {
+                _modelFiles.removeAt(index);
+                _thumbnails.removeAt(index);
+              });
+            },
+            child: const Text('刪除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _uploadSingleModel() async {
@@ -211,7 +235,7 @@ class _UploadScreenState extends State<UploadScreen> {
 
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
-      setState(() => _isUploading = false);
+      if (mounted) setState(() => _isUploading = false);
       return;
     }
 
@@ -248,7 +272,6 @@ class _UploadScreenState extends State<UploadScreen> {
           'license_type': _selectedLicense,
           'file_type': '.${model.name.split('.').last.toUpperCase()}',
           'created_at': DateTime.now().toIso8601String(),
-          // You can add description, categories, acknowledgement later in edit screen
         });
 
         successCount++;
@@ -258,36 +281,31 @@ class _UploadScreenState extends State<UploadScreen> {
       }
     }
 
-    setState(() => _isUploading = false);
+    if (mounted) {
+      setState(() => _isUploading = false);
 
-    if (successCount > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$successCount model(s) uploaded successfully'),
-          backgroundColor: AppTheme.hkmuGreen,
-        ),
-      );
+      if (successCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$successCount model(s) uploaded successfully'),
+            backgroundColor: AppTheme.hkmuGreen,
+          ),
+        );
+      }
+
+      if (errors.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${errors.length} upload(s) failed'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+
+      if (successCount == _modelFiles.length) {
+        context.go('/');
+      }
     }
-
-    if (errors.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${errors.length} upload(s) failed'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-    }
-
-    if (successCount == _modelFiles.length && mounted) {
-      context.go('/');
-    }
-  }
-
-  void _removeMultiModel(int index) {
-    setState(() {
-      _modelFiles.removeAt(index);
-      _thumbnails.removeAt(index);
-    });
   }
 
   @override
@@ -318,24 +336,17 @@ class _UploadScreenState extends State<UploadScreen> {
                           children: [
                             OutlinedButton.icon(
                               onPressed: _isUploading ? null : _pickSingleThumbnail,
-                              icon: const Icon(Icons.image),
+                              icon: SvgPicture.asset('assets/icons/image.svg', width: 24, height: 24, colorFilter: const ColorFilter.mode(AppTheme.hkmuGreen, BlendMode.srcIn)),
                               label: Text(
-                                _thumbnailFileName == null
-                                    ? 'Upload Preview Image *'
-                                    : 'Change Preview Image',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                _thumbnailFileName == null ? 'Upload Preview Image *' : 'Change Preview Image',
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                               ),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: AppTheme.hkmuGreen,
                                 side: const BorderSide(color: AppTheme.hkmuGreen, width: 2),
                                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
                                 minimumSize: const Size(double.infinity, 60),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                             ),
                             const SizedBox(height: 24),
@@ -374,10 +385,7 @@ class _UploadScreenState extends State<UploadScreen> {
                           children: [
                             TextField(
                               controller: _nameController,
-                              decoration: const InputDecoration(
-                                labelText: 'Model Name *',
-                                border: OutlineInputBorder(),
-                              ),
+                              decoration: const InputDecoration(labelText: 'Model Name *', border: OutlineInputBorder()),
                             ),
                             const SizedBox(height: 16),
                             TextField(
@@ -392,9 +400,7 @@ class _UploadScreenState extends State<UploadScreen> {
                             const SizedBox(height: 16),
                             Text(
                               'Categories (select multiple)',
-                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
                             ),
                             const SizedBox(height: 8),
                             if (_categoryList.isEmpty)
@@ -424,9 +430,7 @@ class _UploadScreenState extends State<UploadScreen> {
                                     selectedColor: AppTheme.hkmuGreen.withOpacity(0.25),
                                     checkmarkColor: AppTheme.hkmuGreen,
                                     backgroundColor: Colors.grey[200],
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                   );
                                 }).toList(),
@@ -434,25 +438,15 @@ class _UploadScreenState extends State<UploadScreen> {
                             const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
                               value: _selectedSource,
-                              decoration: const InputDecoration(
-                                labelText: 'Source *',
-                                border: OutlineInputBorder(),
-                              ),
-                              items: _sources
-                                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                                  .toList(),
+                              decoration: const InputDecoration(labelText: 'Source *', border: OutlineInputBorder()),
+                              items: _sources.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
                               onChanged: (v) => v != null ? setState(() => _selectedSource = v) : null,
                             ),
                             const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
                               value: _selectedLicense,
-                              decoration: const InputDecoration(
-                                labelText: 'Usage / License *',
-                                border: OutlineInputBorder(),
-                              ),
-                              items: _licenses
-                                  .map((l) => DropdownMenuItem(value: l, child: Text(l)))
-                                  .toList(),
+                              decoration: const InputDecoration(labelText: 'Usage / License *', border: OutlineInputBorder()),
+                              items: _licenses.map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
                               onChanged: (v) => v != null ? setState(() => _selectedLicense = v) : null,
                             ),
                             const SizedBox(height: 16),
@@ -468,14 +462,8 @@ class _UploadScreenState extends State<UploadScreen> {
                             ),
                             const SizedBox(height: 24),
                             InputDecorator(
-                              decoration: const InputDecoration(
-                                labelText: 'File Type',
-                                border: OutlineInputBorder(),
-                              ),
-                              child: Text(
-                                _fileType,
-                                style: TextStyle(color: Colors.grey[600]),
-                              ),
+                              decoration: const InputDecoration(labelText: 'File Type', border: OutlineInputBorder()),
+                              child: Text(_fileType, style: TextStyle(color: Colors.grey[600])),
                             ),
                             const SizedBox(height: 40),
                             SizedBox(
@@ -483,12 +471,8 @@ class _UploadScreenState extends State<UploadScreen> {
                               child: ElevatedButton.icon(
                                 onPressed: _isUploading || _thumbnailFile == null ? null : _uploadSingleModel,
                                 icon: _isUploading
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                      )
-                                    : const Icon(Icons.upload),
+                                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                    : SvgPicture.asset('assets/icons/upload.svg', width: 24, height: 24, colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn)),
                                 label: Text(_isUploading ? 'Uploading...' : 'Upload Model'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.hkmuGreen,
@@ -508,7 +492,7 @@ class _UploadScreenState extends State<UploadScreen> {
                     children: [
                       OutlinedButton.icon(
                         onPressed: _isUploading ? null : _pickSingleThumbnail,
-                        icon: const Icon(Icons.image),
+                        icon: SvgPicture.asset('assets/icons/image.svg', width: 24, height: 24, colorFilter: const ColorFilter.mode(AppTheme.hkmuGreen, BlendMode.srcIn)),
                         label: Text(
                           _thumbnailFileName == null ? 'Upload Preview Image *' : 'Change Preview Image',
                           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
@@ -535,26 +519,18 @@ class _UploadScreenState extends State<UploadScreen> {
                       const SizedBox(height: 32),
                       TextField(
                         controller: _nameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Model Name *',
-                          border: OutlineInputBorder(),
-                        ),
+                        decoration: const InputDecoration(labelText: 'Model Name *', border: OutlineInputBorder()),
                       ),
                       const SizedBox(height: 16),
                       TextField(
                         controller: _descriptionController,
                         maxLines: 5,
-                        decoration: const InputDecoration(
-                          labelText: 'Description',
-                          border: OutlineInputBorder(),
-                        ),
+                        decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'Categories',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 8),
                       if (_categoryList.isEmpty)
@@ -584,29 +560,21 @@ class _UploadScreenState extends State<UploadScreen> {
                               selectedColor: AppTheme.hkmuGreen.withOpacity(0.25),
                               checkmarkColor: AppTheme.hkmuGreen,
                               backgroundColor: Colors.grey[200],
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                             );
                           }).toList(),
                         ),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         value: _selectedSource,
-                        decoration: const InputDecoration(
-                          labelText: 'Source *',
-                          border: OutlineInputBorder(),
-                        ),
+                        decoration: const InputDecoration(labelText: 'Source *', border: OutlineInputBorder()),
                         items: _sources.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
                         onChanged: (v) => v != null ? setState(() => _selectedSource = v) : null,
                       ),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         value: _selectedLicense,
-                        decoration: const InputDecoration(
-                          labelText: 'Usage / License *',
-                          border: OutlineInputBorder(),
-                        ),
+                        decoration: const InputDecoration(labelText: 'Usage / License *', border: OutlineInputBorder()),
                         items: _licenses.map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
                         onChanged: (v) => v != null ? setState(() => _selectedLicense = v) : null,
                       ),
@@ -622,14 +590,8 @@ class _UploadScreenState extends State<UploadScreen> {
                       ),
                       const SizedBox(height: 24),
                       InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'File Type',
-                          border: OutlineInputBorder(),
-                        ),
-                        child: Text(
-                          _fileType,
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
+                        decoration: const InputDecoration(labelText: 'File Type', border: OutlineInputBorder()),
+                        child: Text(_fileType, style: TextStyle(color: Colors.grey[600])),
                       ),
                       const SizedBox(height: 40),
                       SizedBox(
@@ -638,7 +600,7 @@ class _UploadScreenState extends State<UploadScreen> {
                           onPressed: _isUploading || _thumbnailFile == null ? null : _uploadSingleModel,
                           icon: _isUploading
                               ? const CircularProgressIndicator(color: Colors.white)
-                              : const Icon(Icons.upload),
+                              : SvgPicture.asset('assets/icons/upload.svg', width: 24, height: 24, colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn)),
                           label: Text(_isUploading ? 'Uploading...' : 'Upload Model'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.hkmuGreen,
@@ -671,61 +633,77 @@ class _UploadScreenState extends State<UploadScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Selected Models',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        Text(
+          'Selected Models (${_modelFiles.length})',
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 16),
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _modelFiles.length,
-          itemBuilder: (context, index) {
-            final file = _modelFiles[index];
-            final thumb = _thumbnails[index];
 
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: ListTile(
-                leading: thumb != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.memory(
-                          thumb.bytes!,
+        SizedBox(
+          height: 420,
+          child: ListView.builder(
+            key: ValueKey('multi_list_${_modelFiles.length}'),
+            physics: const BouncingScrollPhysics(),
+            itemCount: _modelFiles.length,
+            itemBuilder: (context, index) {
+              final file = _modelFiles[index];
+              final thumb = _thumbnails[index];
+
+              return Card(
+                key: ValueKey('model_card_${file.name}_$index'),
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  leading: thumb != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            thumb.bytes!,
+                            width: 56,
+                            height: 56,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      : Container(
                           width: 56,
                           height: 56,
-                          fit: BoxFit.cover,
+                          color: Colors.grey[300],
+                          child: const Icon(Icons.image_not_supported, size: 28),
                         ),
-                      )
-                    : Container(
-                        width: 56,
-                        height: 56,
-                        color: Colors.grey[300],
-                        child: const Icon(Icons.image_not_supported, size: 28),
+                  title: Text(
+                    file.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(thumb != null ? 'Preview added' : 'No preview yet'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: SvgPicture.asset(
+                          'assets/icons/add_photo_alternate.svg',
+                          width: 24,
+                          height: 24,
+                          colorFilter: const ColorFilter.mode(AppTheme.hkmuGreen, BlendMode.srcIn),
+                        ),
+                        onPressed: _isUploading ? null : () => _pickThumbnailForMulti(index),
                       ),
-                title: Text(
-                  file.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                      IconButton(
+                        icon: SvgPicture.asset(
+                          'assets/icons/delete.svg',
+                          width: 24,
+                          height: 24,
+                          colorFilter: const ColorFilter.mode(Colors.red, BlendMode.srcIn),
+                        ),
+                        onPressed: _isUploading ? null : () => _removeMultiModel(index),
+                      ),
+                    ],
+                  ),
                 ),
-                subtitle: Text(thumb != null ? 'Preview added' : 'No preview yet'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.add_photo_alternate, color: AppTheme.hkmuGreen),
-                      onPressed: _isUploading ? null : () => _pickThumbnailForMulti(index),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: _isUploading ? null : () => _removeMultiModel(index),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
+
         const SizedBox(height: 24),
         const Text(
           'Common settings (applied to all models)',
@@ -734,20 +712,14 @@ class _UploadScreenState extends State<UploadScreen> {
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
           value: _selectedSource,
-          decoration: const InputDecoration(
-            labelText: 'Source *',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(labelText: 'Source *', border: OutlineInputBorder()),
           items: _sources.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
           onChanged: _isUploading ? null : (v) => v != null ? setState(() => _selectedSource = v) : null,
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
           value: _selectedLicense,
-          decoration: const InputDecoration(
-            labelText: 'Usage / License *',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(labelText: 'Usage / License *', border: OutlineInputBorder()),
           items: _licenses.map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
           onChanged: _isUploading ? null : (v) => v != null ? setState(() => _selectedLicense = v) : null,
         ),
@@ -758,11 +730,9 @@ class _UploadScreenState extends State<UploadScreen> {
             onPressed: _isUploading || _modelFiles.isEmpty ? null : _uploadMultipleModels,
             icon: _isUploading
                 ? const CircularProgressIndicator(color: Colors.white)
-                : const Icon(Icons.upload),
+                : SvgPicture.asset('assets/icons/upload.svg', width: 24, height: 24, colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn)),
             label: Text(
-              _isUploading
-                  ? 'Uploading ${_modelFiles.length} models...'
-                  : 'Upload All Models',
+              _isUploading ? 'Uploading ${_modelFiles.length} models...' : 'Upload All Models',
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.hkmuGreen,
@@ -794,7 +764,7 @@ class _UploadScreenState extends State<UploadScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.cloud_upload, size: 80, color: AppTheme.hkmuGreen),
+                      SvgPicture.asset('assets/icons/cloud_upload.svg', width: 80, height: 80, colorFilter: const ColorFilter.mode(AppTheme.hkmuGreen, BlendMode.srcIn)),
                       const SizedBox(height: 24),
                       Text(
                         'Upload Your 3D Model',
@@ -838,7 +808,7 @@ class _UploadScreenState extends State<UploadScreen> {
                       if (_uploadMode == 'single')
                         ElevatedButton.icon(
                           onPressed: _isUploading ? null : _pickSingleModel,
-                          icon: const Icon(Icons.folder_open),
+                          icon: SvgPicture.asset('assets/icons/folder_open.svg', width: 24, height: 24, colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn)),
                           label: Text(
                             _hasPickedModel ? 'Change Model File' : 'Choose 3D Model File',
                             style: const TextStyle(fontSize: 18),
@@ -854,7 +824,7 @@ class _UploadScreenState extends State<UploadScreen> {
                       else
                         ElevatedButton.icon(
                           onPressed: _isUploading ? null : _pickMultipleModels,
-                          icon: const Icon(Icons.folder_open),
+                          icon: SvgPicture.asset('assets/icons/folder_open.svg', width: 24, height: 24, colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn)),
                           label: const Text(
                             'Choose Multiple 3D Models',
                             style: TextStyle(fontSize: 18),
@@ -873,7 +843,7 @@ class _UploadScreenState extends State<UploadScreen> {
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 400),
                         child: KeyedSubtree(
-                          key: ValueKey(_uploadMode),
+                          key: ValueKey('${_uploadMode}_${_modelFiles.length}'),
                           child: _uploadMode == 'single'
                               ? _buildSingleUploadContent()
                               : _buildMultiUploadContent(),

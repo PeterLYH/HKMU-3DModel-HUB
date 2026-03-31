@@ -79,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (_selectedCategory != 'All') {
-        query = query.contains('categories', _selectedCategory);
+        query = query.contains('categories', [_selectedCategory]);
       }
 
       final response = await query
@@ -95,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (_selectedCategory != 'All') {
-        countQuery = countQuery.contains('categories', _selectedCategory);
+        query = query.contains('categories', [_selectedCategory]);
       }
 
       final count = await countQuery;
